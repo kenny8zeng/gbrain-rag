@@ -24,8 +24,8 @@
 
 **Purpose**: 依赖变更与 zod v4 迁移——最高风险项前置
 
-- [ ] T001 [P] 依赖变更：根 `package.json` 执行 `bun add zod@^4 @hono/zod-openapi swagger-ui-dist`，确认 peer 关系满足（hono ≥4.10）并落锁
-- [ ] T002 zod v3→v4 全仓迁移：替换弃用用法（如 `z.string().url()` → `z.url()`），跑通全量既有测试（`bun run test` 36 项零回归）；若摩擦超时间箱（0.5 天）触发 research D1 回退路径并升级为决策项
+- [X] T001 [P] 依赖变更：根 `package.json` 执行 `bun add zod@^4 @hono/zod-openapi swagger-ui-dist`，确认 peer 关系满足（hono ≥4.10）并落锁
+- [X] T002 zod v3→v4 全仓迁移：替换弃用用法（如 `z.string().url()` → `z.url()`），跑通全量既有测试（`bun run test` 36 项零回归）；若摩擦超时间箱（0.5 天）触发 research D1 回退路径并升级为决策项
 
 ---
 
@@ -35,8 +35,8 @@
 
 **⚠️ CRITICAL**: 未完成本阶段，US1-US3 不得开工
 
-- [ ] T003 新建 apps/server/src/openapi/schemas.ts：集中全部请求/响应 Zod schema（kb、keys、documents、retrieval、jobs、health、错误 envelope），既有路由内联 schema 改为引用此处（唯一事实源）
-- [ ] T004 [P] 先写 tests/contract/openapi-drift.test.ts：集合 A=服务描述 paths 展开、集合 B=应用注册路由（白名单豁免：/mcp 说明条目、/openapi.json、/docs、/swagger-ui/*），双向包含断言——当前实现必然失败（红灯基线）
+- [X] T003 新建 apps/server/src/openapi/schemas.ts：集中全部请求/响应 Zod schema（kb、keys、documents、retrieval、jobs、health、错误 envelope），既有路由内联 schema 改为引用此处（唯一事实源）
+- [X] T004 [P] 先写 tests/contract/openapi-drift.test.ts：集合 A=服务描述 paths 展开、集合 B=应用注册路由（白名单豁免：/mcp 说明条目、/openapi.json、/docs、/swagger-ui/*），双向包含断言——当前实现必然失败（红灯基线）
 
 **Checkpoint**: zod4 零回归 + 漂移测试红灯就位
 
@@ -50,15 +50,15 @@
 
 ### Tests for User Story 1
 
-- [ ] T005 [P] [US1] 先写 tests/contract/openapi.test.ts：OpenAPI 3.x 合法性、三平面路径存在、securitySchemes 两项、路由 security 平面正确（租户 apiKey/管理 adminToken/system 无）、流式与 MCP 说明条目断言（contracts/docs-api.md）
+- [X] T005 [P] [US1] 先写 tests/contract/openapi.test.ts：OpenAPI 3.x 合法性、三平面路径存在、securitySchemes 两项、路由 security 平面正确（租户 apiKey/管理 adminToken/system 无）、流式与 MCP 说明条目断言（contracts/docs-api.md）
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] 新建 apps/server/src/openapi/routes/system.ts：health/openapi/docs/static 以 OpenAPIHono 路由定义注册（无 security）
-- [ ] T007 [US1] 迁移租户面路由到 apps/server/src/openapi/routes/tenant.ts：documents（三态导入/列表/任务/删除）与 retrieval 的路由定义 + schemas.ts 引用 + `security: apiKey`；处理器逻辑不变
-- [ ] T008 [US1] 迁移管理面路由到 apps/server/src/openapi/routes/admin.ts：kb/keys/jobs-admin + `security: adminToken`；处理器逻辑不变
-- [ ] T009 [US1] 改造 apps/server/src/app.ts：装配 OpenAPIHono 替换裸 Hono 路由注册，`/openapi.json` 改由定义生成器输出（删除手写 openapiDoc），`/v1/admin/openapi/gbrain.json` 透出引擎描述并为其流式路由补流式说明（research D5）、`/mcp` 以说明条目存在
-- [ ] T010 [US1] 运行 T004/T005 至全绿（漂移转绿即结构达标）；全量既有测试零回归
+- [X] T006 [US1] 新建 apps/server/src/openapi/routes/system.ts：health/openapi/docs/static 以 OpenAPIHono 路由定义注册（无 security）
+- [X] T007 [US1] 迁移租户面路由到 apps/server/src/openapi/routes/tenant.ts：documents（三态导入/列表/任务/删除）与 retrieval 的路由定义 + schemas.ts 引用 + `security: apiKey`；处理器逻辑不变
+- [X] T008 [US1] 迁移管理面路由到 apps/server/src/openapi/routes/admin.ts：kb/keys/jobs-admin + `security: adminToken`；处理器逻辑不变
+- [X] T009 [US1] 改造 apps/server/src/app.ts：装配 OpenAPIHono 替换裸 Hono 路由注册，`/openapi.json` 改由定义生成器输出（删除手写 openapiDoc），`/v1/admin/openapi/gbrain.json` 透出引擎描述并为其流式路由补流式说明（research D5）、`/mcp` 以说明条目存在
+- [X] T010 [US1] 运行 T004/T005 至全绿（漂移转绿即结构达标）；全量既有测试零回归
 
 **Checkpoint**: US1 独立验收 = quickstart 场景 1 全部通过
 
@@ -72,12 +72,12 @@
 
 ### Tests for User Story 2
 
-- [ ] T011 [P] [US2] 先写 tests/contract/docs-ui.test.ts：/docs 200 且 HTML 内 src/href 全部同源相对路径（零外链断言）、/swagger-ui 白名单资源 200、白名单外 404、两组分组 urls 存在（服务 + 引擎代理）
+- [X] T011 [P] [US2] 先写 tests/contract/docs-ui.test.ts：/docs 200 且 HTML 内 src/href 全部同源相对路径（零外链断言）、/swagger-ui 白名单资源 200、白名单外 404、两组分组 urls 存在（服务 + 引擎代理）
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] 新建 apps/server/src/openapi/ui.ts：/docs 页面（多分组 urls：服务描述 + 引擎描述；Authorize 提示 Bearer/X-API-Key）与 /swagger-ui/* 静态白名单分发（资源取自 swagger-ui-dist 包，禁止 CDN）
-- [ ] T013 [US2] 从 apps/server/src/app.ts 移除既有 CDN 版 /docs 实现，挂载 ui.ts；运行 T011 至全绿（SC-003）
+- [X] T012 [US2] 新建 apps/server/src/openapi/ui.ts：/docs 页面（多分组 urls：服务描述 + 引擎描述；Authorize 提示 Bearer/X-API-Key）与 /swagger-ui/* 静态白名单分发（资源取自 swagger-ui-dist 包，禁止 CDN）
+- [X] T013 [US2] 从 apps/server/src/app.ts 移除既有 CDN 版 /docs 实现，挂载 ui.ts；运行 T011 至全绿（SC-003）
 
 **Checkpoint**: US1+US2 叠加 = quickstart 场景 1-2 全部通过
 
@@ -91,8 +91,8 @@
 
 ### Implementation for User Story 3
 
-- [ ] T014 [US3] 完善 tests/contract/openapi-drift.test.ts 差异输出（缺失/多余路由逐项列出）；破坏性演练：临时注册未入文档路由 → 断言失败并记录输出 → 还原（证明 FR-004 闸门有效）
-- [ ] T015 [US3] 将漂移校验纳入默认测试集（确认 `bun run test` 无 tag 过滤即执行），并在 README 开发章节登记该闸门
+- [X] T014 [US3] 完善 tests/contract/openapi-drift.test.ts 差异输出（缺失/多余路由逐项列出）；破坏性演练：临时注册未入文档路由 → 断言失败并记录输出 → 还原（证明 FR-004 闸门有效）
+- [X] T015 [US3] 将漂移校验纳入默认测试集（确认 `bun run test` 无 tag 过滤即执行），并在 README 开发章节登记该闸门
 
 **Checkpoint**: 三故事完成 = quickstart 场景 1-3 全部通过
 
@@ -100,8 +100,8 @@
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T016 [P] 更新 README.md：文档/页面章节（地址、两枚鉴权方案、自托管说明）替换既有 Swagger 描述
-- [ ] T017 性能与回归复核：/openapi.json 与 /docs 响应时延采样（SC-004 关联：文档生成成本启动期缓存）；全量测试 + quickstart 走查记录回填
+- [X] T016 [P] 更新 README.md：文档/页面章节（地址、两枚鉴权方案、自托管说明）替换既有 Swagger 描述
+- [X] T017 性能与回归复核：/openapi.json 与 /docs 响应时延采样（SC-004 关联：文档生成成本启动期缓存）；全量测试 + quickstart 走查记录回填
 
 ---
 

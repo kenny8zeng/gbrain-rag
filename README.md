@@ -38,7 +38,14 @@ curl localhost:3000/health
 | 管理面 | `Authorization: Bearer $ADMIN_TOKEN` | `POST/GET /v1/kb`、`DELETE /v1/kb/:id`、`POST/PATCH/DELETE /v1/keys`、`GET /v1/jobs`、`/v1/admin/gbrain/*` |
 | 租户面 | `X-API-Key: gbrag_...` | `POST /v1/kb/:id/documents`、`GET/DELETE .../documents/:slug`、`POST /v1/kb/:id/retrieval`、`POST /mcp` |
 
-Swagger：`GET /docs`。完整契约：`specs/001-gbrain-rag-service/contracts/`。
+## API 文档
+
+- `GET /openapi.json` — 服务接口描述（租户/管理面，OpenAPI 3.x，双鉴权方案）
+- `GET /v1/admin/openapi/gbrain.json` — 引擎运维代理描述（55 路由）
+- `GET /docs` — 自托管交互文档（分组切换 + 凭证录入在线执行，零外部网络依赖）
+- 文档与注册路由零漂移：`tests/contract/openapi-drift.test.ts` 为 CI 闸门
+
+完整契约：`specs/001-gbrain-rag-service/contracts/`、`specs/003-openapi-swagger-ui/contracts/docs-api.md`。
 
 ## 环境变量
 
