@@ -24,12 +24,12 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 **Purpose**: 工程骨架、依赖、部署资产就绪
 
-- [ ] T001 创建 bun workspaces 脚手架：根 `package.json`（workspaces: apps/server, packages/core）与 `tsconfig.json`，按 plan.md Project Structure 建目录骨架
-- [ ] T002 [P] 实现 packages/core/src/config.ts：Zod 校验全部环境变量（PORT/ADMIN_TOKEN/DATABASE_URL/DOCLING_URL/EMBEDDING_*/GBRAIN_SERVE_PORT/DATA_DIR/MCP_SURFACE/并发上限），缺失必填项启动即报错；配 tests/unit/config.test.ts
-- [ ] T003 编写 deploy/migrations/0001-init.sql：rag_keys、rag_jobs、_rag_migrations 三表与索引，字段与约束照 data-model.md（CHECK/JSONB/部分索引）
-- [ ] T004 实现 packages/core/src/db.ts：Bun postgres 连接（DATABASE_URL）+ 启动期按序迁移执行器（_rag_migrations 记录，幂等）
-- [ ] T005 [P] 引入 cli2api git 依赖：根 `package.json` 添加 `github.com/kenny8zeng/cli2api`（锁定 tag）并验证 `import { registry/runner }` 可用；落地 `deploy/clis/gbrain.yaml`（自上游 gen-gbrain-spec 生成物调整 binary=/usr/local/bin/gbrain，其余不改，保持可随上游重生成）
-- [ ] T006 [P] 编写 deploy/Dockerfile（多阶段：bun 应用构建层；gbrain 源码层 `git clone --depth 1 --branch v0.47.6.0 https://github.com/garrytan/gbrain.git && bun install && bun run build` 产出 bin/gbrain 拷入运行层，并以 `gbrain serve --http` 冒烟判定是否需补 build:admin-embedded，见 research D1）、deploy/compose.yaml（gbrain-rag + postgres:16-pgvector + volumes）、deploy/entrypoint.sh（`gbrain init --url $DATABASE_URL` 幂等 → exec server）、deploy/.env.example
+- [X] T001 创建 bun workspaces 脚手架：根 `package.json`（workspaces: apps/server, packages/core）与 `tsconfig.json`，按 plan.md Project Structure 建目录骨架
+- [X] T002 [P] 实现 packages/core/src/config.ts：Zod 校验全部环境变量（PORT/ADMIN_TOKEN/DATABASE_URL/DOCLING_URL/EMBEDDING_*/GBRAIN_SERVE_PORT/DATA_DIR/MCP_SURFACE/并发上限），缺失必填项启动即报错；配 tests/unit/config.test.ts
+- [X] T003 编写 deploy/migrations/0001-init.sql：rag_keys、rag_jobs、_rag_migrations 三表与索引，字段与约束照 data-model.md（CHECK/JSONB/部分索引）
+- [X] T004 实现 packages/core/src/db.ts：Bun postgres 连接（DATABASE_URL）+ 启动期按序迁移执行器（_rag_migrations 记录，幂等）
+- [X] T005 [P] 引入 cli2api git 依赖：根 `package.json` 添加 `github.com/kenny8zeng/cli2api`（锁定 tag）并验证 `import { registry/runner }` 可用；落地 `deploy/clis/gbrain.yaml`（自上游 gen-gbrain-spec 生成物调整 binary=/usr/local/bin/gbrain，其余不改，保持可随上游重生成）
+- [X] T006 [P] 编写 deploy/Dockerfile（多阶段：bun 应用构建层；gbrain 源码层 `git clone --depth 1 --branch v0.47.6.0 https://github.com/garrytan/gbrain.git && bun install && bun run build` 产出 bin/gbrain 拷入运行层，并以 `gbrain serve --http` 冒烟判定是否需补 build:admin-embedded，见 research D1）、deploy/compose.yaml（gbrain-rag + postgres:16-pgvector + volumes）、deploy/entrypoint.sh（`gbrain init --url $DATABASE_URL` 幂等 → exec server）、deploy/.env.example
 - [ ] T007 Setup 检查点：`docker compose up -d --build` 成功，容器内 `gbrain --version` 输出 0.47.6.0，迁移执行完毕（_rag_migrations 有 0001 记录）
 
 ---
@@ -40,13 +40,13 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 **⚠️ CRITICAL**: 未完成本阶段，任何用户故事不得开工
 
-- [ ] T008 实现 packages/core/src/gbrain-cli.ts：spawn 封装（GBRAIN_SOURCE env 逐调用钉定、--json 解析、stderr 捕获、超时 kill、CliError 错误类型），唯一 CLI 入口禁止旁路；tests/unit/gbrain-cli.test.ts（mock spawn 断言 argv/env 装配）
-- [ ] T009 [P] 实现 packages/core/src/gbrain-upstream.ts：client_credentials 换 token（POST /token）、TTL 缓存与过期刷新、上游 401 重取重放、对 `gbrain serve --http` 的 fetch helper；tests/unit/gbrain-upstream.test.ts（mock http）
-- [ ] T010 实现 apps/server/src/supervisor.ts：spawn `gbrain serve --http --port $GBRAIN_SERVE_PORT`（127.0.0.1），崩溃指数退避重启，SIGTERM/SIGINT 信号转发与就绪探测
-- [ ] T011 实现 apps/server/src/index.ts 启动序：config → migrate → supervisor → hono listen → worker 启动；优雅停机钩子
-- [ ] T012 实现 apps/server/src/app.ts（Hono）：统一错误 envelope（{"error":{code,message}}）、/health（gbrain_serve/db/docling 探活，docling 5s 缓存）、/openapi.json 与 /docs（自有 REST）、404/405 兜底
-- [ ] T013 实现 apps/server/src/middleware/auth.ts：requireAdmin（Bearer ADMIN_TOKEN）与 requireTenant 骨架（X-API-Key → sha256 → 查 credentials.lookup，lookup 由 T018 实现后接入）
-- [ ] T014 实现 apps/server/src/worker.ts：SKIP LOCKED 原子认领（SQL 照 data-model.md）、heartbeat_at 心跳、启动期回收扫描（running>30min→queued）、attempts≤3 指数退避、任务 handler 注册表（US2 注入实现）
+- [X] T008 实现 packages/core/src/gbrain-cli.ts：spawn 封装（GBRAIN_SOURCE env 逐调用钉定、--json 解析、stderr 捕获、超时 kill、CliError 错误类型），唯一 CLI 入口禁止旁路；tests/unit/gbrain-cli.test.ts（mock spawn 断言 argv/env 装配）
+- [X] T009 [P] 实现 packages/core/src/gbrain-upstream.ts：client_credentials 换 token（POST /token）、TTL 缓存与过期刷新、上游 401 重取重放、对 `gbrain serve --http` 的 fetch helper；tests/unit/gbrain-upstream.test.ts（mock http）
+- [X] T010 实现 apps/server/src/supervisor.ts：spawn `gbrain serve --http --port $GBRAIN_SERVE_PORT`（127.0.0.1），崩溃指数退避重启，SIGTERM/SIGINT 信号转发与就绪探测
+- [X] T011 实现 apps/server/src/index.ts 启动序：config → migrate → supervisor → hono listen → worker 启动；优雅停机钩子
+- [X] T012 实现 apps/server/src/app.ts（Hono）：统一错误 envelope（{"error":{code,message}}）、/health（gbrain_serve/db/docling 探活，docling 5s 缓存）、/openapi.json 与 /docs（自有 REST）、404/405 兜底
+- [X] T013 实现 apps/server/src/middleware/auth.ts：requireAdmin（Bearer ADMIN_TOKEN）与 requireTenant 骨架（X-API-Key → sha256 → 查 credentials.lookup，lookup 由 T018 实现后接入）
+- [X] T014 实现 apps/server/src/worker.ts：SKIP LOCKED 原子认领（SQL 照 data-model.md）、heartbeat_at 心跳、启动期回收扫描（running>30min→queued）、attempts≤3 指数退避、任务 handler 注册表（US2 注入实现）
 
 **Checkpoint**: `/health` 返回 ok；数据库迁移完成；serve 子进程运行；此时 US1-US3 可并行开工
 

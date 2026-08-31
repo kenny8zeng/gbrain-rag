@@ -1,0 +1,16 @@
+node_modules/
+.git/
+.gitignore
+data/
+specs/
+.openteams/
+.omp/
+.specify/
+*.log
+.env*
+!.env.example
+Dockerfile*
+docker-compose*
+compose.yaml*
+.dockerignore
+tests/

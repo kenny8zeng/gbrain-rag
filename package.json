@@ -1,0 +1,25 @@
+{
+  "name": "gbrain-rag",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/server",
+    "packages/core"
+  ],
+  "scripts": {
+    "dev": "bun run apps/server/src/index.ts",
+    "start": "bun run apps/server/src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cli2api": "github:kenny8zeng/cli2api#4359231ec0401e252562c8881629dd32b052ee97",
+    "hono": "^4.9.0",
+    "yaml": "^2.9.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  }
+}

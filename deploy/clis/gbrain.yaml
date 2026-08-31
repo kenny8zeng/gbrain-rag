@@ -1,0 +1,2043 @@
+openapi: 3.0.3
+info:
+  title: gbrain API
+  description: >-
+    gbrain 知识库全生命周期管理 API(经 docker exec 执行容器内 CLI)。覆盖页面
+    CRUD、标签/时间线/链接、搜索与代码索引、内容摄取、来源与作业管理、维护与记忆操作。
+
+
+    约定:标记 [DESTRUCTIVE] 的操作会修改或删除数据;标记 [WRITE] 的操作会写入数据。调用方负责鉴权。
+
+    SSE 输出:stdout/stderr 事件 + 末尾 exit 事件(exitCode/reason/durationMs)。
+  version: 1.0.0
+x-cli:
+  binary: /usr/local/bin/gbrain
+  argv: []
+  maxConcurrency: 1
+  timeoutMs: 60000
+paths:
+  /get/{slug}:
+    get:
+      x-cli:
+        argv:
+          - get
+      summary: 读取页面
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug,支持模糊匹配
+          schema:
+            type: string
+        - name: fuzzy
+          in: query
+          required: false
+          description: 启用模糊 slug 解析
+          schema:
+            type: boolean
+        - name: include-content
+          in: query
+          required: false
+          description: 包含规范化 content 字段(frontmatter + body + timeline)
+          schema:
+            type: boolean
+        - name: include-deleted
+          in: query
+          required: false
+          description: 显示软删除页面(deleted_at 已填充)
+          schema:
+            type: boolean
+        - name: source-id
+          in: query
+          required: false
+          description: 限定单一来源;'__all__' 跨全部来源
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /put/{slug}:
+    put:
+      x-cli:
+        argv:
+          - put
+        body:
+          as: flag
+          flag: content
+      summary: 写入/替换页面
+      description: >-
+        整体替换页面(markdown + frontmatter)。非增量编辑;改前先用 get 读取规范内容。body 经 --content
+        传入,Content-Type 用 text/markdown。
+
+
+        请求体:完整 markdown 内容(含 YAML frontmatter)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: allow-empty
+          in: query
+          required: false
+          description: 允许用空/纯空白内容覆盖现有页面
+          schema:
+            type: boolean
+        - name: source-kind
+          in: query
+          required: false
+          description: 摄取渠道分类(capture-cli | put_page | webhook …)
+          schema:
+            type: string
+        - name: source-uri
+          in: query
+          required: false
+          description: 原始 URI/路径/消息 id
+          schema:
+            type: string
+        - name: ingested-via
+          in: query
+          required: false
+          description: 与 source-kind 配对的更细标签
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /delete/{slug}:
+    delete:
+      x-cli:
+        argv:
+          - delete
+      summary: 软删除页面
+      description: "[DESTRUCTIVE] 软删除:从搜索与 get/list 隐藏,72h 内可恢复;autopilot 回收期后硬删除。"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 要软删除的页面 slug
+          schema:
+            type: string
+        - name: source-id
+          in: query
+          required: false
+          description: 来源限定
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /list:
+    get:
+      x-cli:
+        argv:
+          - list
+      summary: 列出页面
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: 按页面类型过滤
+          schema:
+            type: string
+        - name: tag
+          in: query
+          required: false
+          description: 按标签过滤
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          description: 分页偏移
+          schema:
+            type: integer
+        - name: sort
+          in: query
+          required: false
+          description: 排序方式
+          schema:
+            type: string
+            default: updated_desc
+            enum:
+              - updated_desc
+              - updated_asc
+              - created_desc
+              - slug
+        - name: include-deleted
+          in: query
+          required: false
+          description: 包含软删除页面
+          schema:
+            type: boolean
+        - name: source-id
+          in: query
+          required: false
+          description: 限定来源;'__all__' 跨全部来源
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /tags/{slug}:
+    get:
+      x-cli:
+        argv:
+          - tags
+      summary: 列出页面标签
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /tag/{slug}/{tag}:
+    put:
+      x-cli:
+        argv:
+          - tag
+      summary: 给页面添加标签
+      description: "[WRITE] 添加标签(纯字符串,非 slug)。"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: tag
+          in: path
+          required: true
+          description: 要添加的标签
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /untag/{slug}/{tag}:
+    delete:
+      x-cli:
+        argv:
+          - untag
+      summary: 移除页面标签
+      description: "[WRITE] 移除标签(需与现有标签完全匹配)。"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: tag
+          in: path
+          required: true
+          description: 要移除的标签
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /timeline/{slug}:
+    get:
+      x-cli:
+        argv:
+          - timeline
+      summary: 读取页面时间线
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: after
+          in: query
+          required: false
+          description: 仅返回该日期(含)之后条目
+          schema:
+            type: string
+        - name: before
+          in: query
+          required: false
+          description: 仅返回该日期(含)之前条目
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大条目数
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /timeline-add/{slug}/{date}/{summary}:
+    post:
+      x-cli:
+        argv:
+          - timeline-add
+      summary: 添加时间线条目
+      description: "[WRITE] 向结构化时间线存储追加条目(不修改 get 返回的 pages.timeline markdown)。"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: date
+          in: path
+          required: true
+          description: 条目日期,严格 YYYY-MM-DD
+          schema:
+            type: string
+        - name: summary
+          in: path
+          required: true
+          description: 单行摘要
+          schema:
+            type: string
+        - name: detail
+          in: query
+          required: false
+          description: 摘要后的长文本细节
+          schema:
+            type: string
+        - name: source
+          in: query
+          required: false
+          description: 条目的出处引用(会议 slug 或 URL)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /link-sources:
+    get:
+      x-cli:
+        argv:
+          - link-sources
+      summary: 列出链接出处(provenance)及其边数
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /link/{from}/{to}:
+    put:
+      x-cli:
+        argv:
+          - link
+      summary: 创建页面链接
+      description: "[WRITE] 创建从 from 到 to 的有向链接。"
+      parameters:
+        - name: from
+          in: path
+          required: true
+          description: 链接源页面 slug
+          schema:
+            type: string
+        - name: to
+          in: path
+          required: true
+          description: 链接目标页面 slug
+          schema:
+            type: string
+        - name: link-type
+          in: query
+          required: false
+          description: 链接类型(如 invested_in, works_at)
+          schema:
+            type: string
+        - name: context
+          in: query
+          required: false
+          description: 链接上下文
+          schema:
+            type: string
+        - name: link-source
+          in: query
+          required: false
+          description: 出处标签(kebab-case,默认 'manual';内置 reconciliation 类型被拒)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /unlink/{from}/{to}:
+    delete:
+      x-cli:
+        argv:
+          - unlink
+      summary: 移除页面链接
+      description: "[DESTRUCTIVE] 移除从 from 到 to 的链接,可按类型/出处过滤。"
+      parameters:
+        - name: from
+          in: path
+          required: true
+          description: 链接源页面 slug
+          schema:
+            type: string
+        - name: to
+          in: path
+          required: true
+          description: 链接目标页面 slug
+          schema:
+            type: string
+        - name: link-type
+          in: query
+          required: false
+          description: 仅移除该类型的边(省略 = 全部类型)
+          schema:
+            type: string
+        - name: link-source
+          in: query
+          required: false
+          description: 仅移除该出处的边(省略 = 任意出处)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /backlinks/{slug}:
+    get:
+      x-cli:
+        argv:
+          - backlinks
+      summary: 列出指向页面的入链
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /search/{query}:
+    get:
+      x-cli:
+        argv:
+          - search
+      summary: 关键词混合搜索
+      description: 廉价 hybrid 搜索(向量 + 关键词 + RRF),无 LLM 扩展。精确 token/名称/结构化字段最佳。
+      parameters:
+        - name: query
+          in: path
+          required: true
+          description: 搜索文本
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          description: 跳过前 N 条
+          schema:
+            type: integer
+        - name: mode
+          in: query
+          required: false
+          description: 搜索模式
+          schema:
+            type: string
+            enum:
+              - conservative
+              - balanced
+              - tokenmax
+        - name: source-id
+          in: query
+          required: false
+          description: 限定来源;'__all__' 跨全部来源
+          schema:
+            type: string
+        - name: types
+          in: query
+          required: false
+          description: 按页面类型过滤,逗号分隔(如 person,company)
+          schema:
+            type: string
+        - name: snippet-chars
+          in: query
+          required: false
+          description: 每条结果 chunk_text 截断字符数;0 为全文
+          schema:
+            type: integer
+        - name: salience
+          in: query
+          required: false
+          description: 显著度加权(情感权重 + take 数)
+          schema:
+            type: string
+            enum:
+              - off
+              - on
+              - strong
+        - name: recency
+          in: query
+          required: false
+          description: 时效加权
+          schema:
+            type: string
+            enum:
+              - off
+              - on
+              - strong
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /query/{query}:
+    get:
+      x-cli:
+        argv:
+          - query
+      summary: 混合搜索(含多查询扩展)
+      description: 向量 + 关键词 + 多查询扩展。概念/同义/场景类问题优先用 query。
+      parameters:
+        - name: query
+          in: path
+          required: true
+          description: 问题或主题文本
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数;省略或 0 按搜索模式默认
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          description: 跳过前 N 条
+          schema:
+            type: integer
+        - name: types
+          in: query
+          required: false
+          description: 按页面类型过滤,逗号分隔
+          schema:
+            type: string
+        - name: snippet-chars
+          in: query
+          required: false
+          description: 每条结果 chunk_text 截断字符数;0 为全文
+          schema:
+            type: integer
+        - name: expand
+          in: query
+          required: false
+          description: 启用多查询扩展
+          schema:
+            type: boolean
+            default: true
+        - name: detail
+          in: query
+          required: false
+          description: 结果详细度
+          schema:
+            type: string
+            default: medium
+            enum:
+              - low
+              - medium
+              - high
+        - name: mode
+          in: query
+          required: false
+          description: 搜索模式
+          schema:
+            type: string
+            enum:
+              - conservative
+              - balanced
+              - tokenmax
+        - name: lang
+          in: query
+          required: false
+          description: 按 chunk 语言过滤(如 typescript, python)
+          schema:
+            type: string
+        - name: symbol-kind
+          in: query
+          required: false
+          description: 按符号类型过滤(function, class, method …)
+          schema:
+            type: string
+        - name: near-symbol
+          in: query
+          required: false
+          description: 以限定符号名锚定检索(如 BrainEngine.searchKeyword)
+          schema:
+            type: string
+        - name: walk-depth
+          in: query
+          required: false
+          description: 结构遍历深度 1-2,默认 0(关)
+          schema:
+            type: integer
+        - name: salience
+          in: query
+          required: false
+          description: 显著度加权
+          schema:
+            type: string
+            enum:
+              - off
+              - on
+              - strong
+        - name: recency
+          in: query
+          required: false
+          description: 时效加权
+          schema:
+            type: string
+            enum:
+              - off
+              - on
+              - strong
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /code-def/{symbol}:
+    get:
+      x-cli:
+        argv:
+          - code-def
+      summary: 查找符号定义
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          description: 符号名
+          schema:
+            type: string
+        - name: lang
+          in: query
+          required: false
+          description: 语言过滤
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /code-refs/{symbol}:
+    get:
+      x-cli:
+        argv:
+          - code-refs
+      summary: 查找符号引用
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          description: 符号名
+          schema:
+            type: string
+        - name: lang
+          in: query
+          required: false
+          description: 语言过滤
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /code-callers/{symbol}:
+    get:
+      x-cli:
+        argv:
+          - code-callers
+      summary: 谁调用了该符号
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          description: 符号名
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+        - name: all-sources
+          in: query
+          required: false
+          description: 跨全部来源
+          schema:
+            type: boolean
+        - name: source
+          in: query
+          required: false
+          description: 限定来源
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /code-callees/{symbol}:
+    get:
+      x-cli:
+        argv:
+          - code-callees
+      summary: 该符号调用了什么
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          description: 符号名
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+        - name: all-sources
+          in: query
+          required: false
+          description: 跨全部来源
+          schema:
+            type: boolean
+        - name: source
+          in: query
+          required: false
+          description: 限定来源
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /graph-query/{slug}:
+    get:
+      x-cli:
+        argv:
+          - graph-query
+      summary: 图关系遍历
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 起始页面 slug
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          description: 仅返回该链接类型的边
+          schema:
+            type: string
+        - name: depth
+          in: query
+          required: false
+          description: 遍历深度
+          schema:
+            type: integer
+            default: 5
+        - name: direction
+          in: query
+          required: false
+          description: 遍历方向
+          schema:
+            type: string
+            default: out
+            enum:
+              - in
+              - out
+              - both
+        - name: include-foreign
+          in: query
+          required: false
+          description: 包含跨来源边
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /salience:
+    get:
+      x-cli:
+        argv:
+          - salience
+      summary: 高显著度页面
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: 时间窗口天数
+          schema:
+            type: integer
+        - name: kind
+          in: query
+          required: false
+          description: 结果种类过滤
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+        - name: slug-prefix
+          in: query
+          required: false
+          description: slug 前缀过滤
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /anomalies:
+    get:
+      x-cli:
+        argv:
+          - anomalies
+      summary: 近期活动统计异常
+      parameters:
+        - name: lookback-days
+          in: query
+          required: false
+          description: 回看天数
+          schema:
+            type: integer
+        - name: sigma
+          in: query
+          required: false
+          description: 异常阈值(标准差)
+          schema:
+            type: number
+        - name: since
+          in: query
+          required: false
+          description: 起始日期(YYYY-MM-DD)
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /orphans:
+    get:
+      x-cli:
+        argv:
+          - orphans
+      summary: 孤立页面(无入链且无出链)
+      parameters:
+        - name: mode
+          in: query
+          required: false
+          description: 孤立判定模式
+          schema:
+            type: string
+        - name: source
+          in: query
+          required: false
+          description: 限定来源
+          schema:
+            type: string
+        - name: count
+          in: query
+          required: false
+          description: 仅输出计数
+          schema:
+            type: boolean
+        - name: include-pseudo
+          in: query
+          required: false
+          description: 包含伪孤立
+          schema:
+            type: boolean
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /capture:
+    post:
+      x-cli:
+        argv:
+          - capture
+        body:
+          as: positional
+      summary: 摄取内容(入口)
+      description: >-
+        [WRITE] 内容摄取单一入口。body 作为 inline content(Content-Type:
+        text/plain),同步返回生成的页面 slug。
+
+
+        请求体:要摄取的内容文本
+      parameters:
+        - name: slug
+          in: query
+          required: false
+          description: 覆盖默认 inbox/YYYY-MM-DD-<hash6> slug
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          description: 覆盖页面类型(默认 note)
+          schema:
+            type: string
+        - name: source
+          in: query
+          required: false
+          description: 多来源写入目标来源
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /import/{dir}:
+    post:
+      x-cli:
+        argv:
+          - import
+      summary: 导入 markdown 目录
+      description: "[WRITE] 递归导入目录中的 markdown。dir 为服务端可达路径。"
+      parameters:
+        - name: dir
+          in: path
+          required: true
+          description: 待导入目录路径
+          schema:
+            type: string
+        - name: no-embed
+          in: query
+          required: false
+          description: 跳过嵌入
+          schema:
+            type: boolean
+        - name: fresh
+          in: query
+          required: false
+          description: 强制全新导入
+          schema:
+            type: boolean
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /export:
+    post:
+      x-cli:
+        argv:
+          - export
+      summary: 导出为 markdown
+      description: "[WRITE] 导出到指定目录(服务端路径),可按类型/slug 前缀过滤。"
+      parameters:
+        - name: dir
+          in: query
+          required: false
+          description: 导出目标目录(默认 ./out/)
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          description: 按页面类型过滤
+          schema:
+            type: string
+        - name: slug-prefix
+          in: query
+          required: false
+          description: 按 slug 前缀过滤
+          schema:
+            type: string
+        - name: restore-only
+          in: query
+          required: false
+          description: 仅恢复 supabase-only 文件(需存储分层配置)
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /embed:
+    post:
+      x-cli:
+        argv:
+          - embed
+      summary: 生成/刷新嵌入
+      description: "[WRITE] 为目标页面(--slugs/--stale/--all)生成嵌入向量。"
+      parameters:
+        - name: slugs
+          in: query
+          required: false
+          description: 指定 slug 列表(可重复传)
+          schema:
+            type: array
+            items:
+              type: string
+        - name: all
+          in: query
+          required: false
+          description: 全部页面
+          schema:
+            type: boolean
+        - name: stale
+          in: query
+          required: false
+          description: 仅过期的
+          schema:
+            type: boolean
+        - name: dry-run
+          in: query
+          required: false
+          description: 预演不执行
+          schema:
+            type: boolean
+        - name: batch-size
+          in: query
+          required: false
+          description: 批大小
+          schema:
+            type: integer
+        - name: priority
+          in: query
+          required: false
+          description: 优先级(如 recent)
+          schema:
+            type: string
+        - name: catch-up
+          in: query
+          required: false
+          description: 补齐未嵌入
+          schema:
+            type: boolean
+        - name: include-null-signature
+          in: query
+          required: false
+          description: 包含签名缺失的页面
+          schema:
+            type: boolean
+        - name: background
+          in: query
+          required: false
+          description: 后台执行
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /sources/list:
+    get:
+      x-cli:
+        argv:
+          - sources
+          - list
+      summary: 列出已注册来源
+      parameters:
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /sources/add/{id}:
+    put:
+      x-cli:
+        argv:
+          - sources
+          - add
+      summary: 注册来源
+      description: "[WRITE] 注册新来源。--path 必须是带已提交文件的 git 仓库。"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 来源短名(如 wiki)
+          schema:
+            type: string
+        - name: path
+          in: query
+          required: true
+          description: 来源路径(git 仓库)
+          schema:
+            type: string
+        - name: name
+          in: query
+          required: false
+          description: 显示名
+          schema:
+            type: string
+        - name: federated
+          in: query
+          required: false
+          description: 加入跨来源默认搜索
+          schema:
+            type: boolean
+        - name: force
+          in: query
+          required: false
+          description: 跳过 git 仓库校验
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /sources/remove/{id}:
+    delete:
+      x-cli:
+        argv:
+          - sources
+          - remove
+      summary: 永久删除来源
+      description: "[DESTRUCTIVE] 永久删除来源及其全部数据。有数据时需 --confirm-destructive。"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 来源 id
+          schema:
+            type: string
+        - name: confirm-destructive
+          in: query
+          required: false
+          description: 确认破坏性操作
+          schema:
+            type: boolean
+        - name: dry-run
+          in: query
+          required: false
+          description: 预演显示影响
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /sources/archive/{id}:
+    delete:
+      x-cli:
+        argv:
+          - sources
+          - archive
+      summary: 归档来源
+      description: "[WRITE] 软删除:从搜索隐藏,保留数据 72h。"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 来源 id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /sources/restore/{id}:
+    put:
+      x-cli:
+        argv:
+          - sources
+          - restore
+      summary: 恢复已归档来源
+      description: "[WRITE] 取消归档。"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 来源 id
+          schema:
+            type: string
+        - name: no-federate
+          in: query
+          required: false
+          description: 恢复后不加入跨来源搜索
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /sources/status:
+    get:
+      x-cli:
+        argv:
+          - sources
+          - status
+      summary: 来源状态面板
+      description: 每来源只读仪表盘:最近同步、陈旧度、页面数、嵌入覆盖率、未确认失败。
+      parameters:
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /sources/archived:
+    get:
+      x-cli:
+        argv:
+          - sources
+          - archived
+      summary: 列出已归档来源
+      parameters:
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /sources/purge/{id}:
+    delete:
+      x-cli:
+        argv:
+          - sources
+          - purge
+      summary: 清理已归档来源
+      description: "[DESTRUCTIVE] 永久删除指定已归档来源,需 --confirm-destructive。"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 来源 id
+          schema:
+            type: string
+        - name: confirm-destructive
+          in: query
+          required: false
+          description: 确认破坏性操作
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /jobs/submit/{name}:
+    post:
+      x-cli:
+        argv:
+          - jobs
+          - submit
+        body:
+          as: flag
+          flag: params
+      summary: 提交后台作业
+      description: |-
+        [WRITE] 提交 Minions 作业。作业参数经 body 以 JSON 传入(--params)。
+
+        请求体:作业参数字典(JSON)
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: 作业名
+          schema:
+            type: string
+        - name: queue
+          in: query
+          required: false
+          description: 目标队列
+          schema:
+            type: string
+        - name: priority
+          in: query
+          required: false
+          description: 优先级
+          schema:
+            type: integer
+        - name: delay
+          in: query
+          required: false
+          description: 延迟毫秒数
+          schema:
+            type: integer
+        - name: max-attempts
+          in: query
+          required: false
+          description: 最大尝试次数
+          schema:
+            type: integer
+        - name: dry-run
+          in: query
+          required: false
+          description: 预演不执行
+          schema:
+            type: boolean
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /jobs/list:
+    get:
+      x-cli:
+        argv:
+          - jobs
+          - list
+      summary: 列出作业
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 按状态过滤
+          schema:
+            type: string
+        - name: queue
+          in: query
+          required: false
+          description: 按队列过滤
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /jobs/get/{id}:
+    get:
+      x-cli:
+        argv:
+          - jobs
+          - get
+      summary: 作业详情与历史
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 作业 id
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /jobs/cancel/{id}:
+    delete:
+      x-cli:
+        argv:
+          - jobs
+          - cancel
+      summary: 取消作业
+      description: "[WRITE] 取消等待/活动/延迟中的作业。"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 作业 id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /jobs/retry/{id}:
+    post:
+      x-cli:
+        argv:
+          - jobs
+          - retry
+      summary: 重试作业
+      description: "[WRITE] 重新入队失败的作业。"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 作业 id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /jobs/stats:
+    get:
+      x-cli:
+        argv:
+          - jobs
+          - stats
+      summary: 作业队列健康
+      parameters:
+        - name: queue
+          in: query
+          required: false
+          description: 按队列过滤
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /stats:
+    get:
+      x-cli:
+        argv:
+          - stats
+      summary: 大脑统计
+      description: 页面/块/嵌入/链接/标签计数。
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /health:
+    get:
+      x-cli:
+        argv:
+          - health
+      summary: 大脑健康面板
+      description: 嵌入覆盖率、陈旧页面、孤立页、迁移账本状态。
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /history/{slug}:
+    get:
+      x-cli:
+        argv:
+          - history
+      summary: 页面版本历史
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /revert/{slug}/{version-id}:
+    put:
+      x-cli:
+        argv:
+          - revert
+      summary: 回滚页面到历史版本
+      description: "[DESTRUCTIVE] 回滚到指定版本 id(get_versions 返回的 id 字段,非版本号偏移)。"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: version-id
+          in: path
+          required: true
+          description: 目标版本 id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /features:
+    get:
+      x-cli:
+        argv:
+          - features
+      summary: 功能使用扫描
+      description: 扫描使用情况并推荐未用功能。
+      parameters:
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+        - name: auto-fix
+          in: query
+          required: false
+          description: 自动修复
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /takes/{slug}:
+    get:
+      x-cli:
+        argv:
+          - takes
+      summary: 列出页面 takes
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+        - name: who
+          in: query
+          required: false
+          description: 按持有者过滤
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: false
+          description: 按类型过滤(fact|take|bet|hunch)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: 排序
+          schema:
+            type: string
+            enum:
+              - weight
+              - since_date
+              - created_at
+        - name: expired
+          in: query
+          required: false
+          description: 包含过期条目
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /takes/list:
+    get:
+      x-cli:
+        argv:
+          - takes
+          - list
+      summary: 列出全库活跃 takes
+      parameters:
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+        - name: who
+          in: query
+          required: false
+          description: 按持有者过滤
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: false
+          description: 按类型过滤
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: 排序
+          schema:
+            type: string
+            enum:
+              - weight
+              - since_date
+              - created_at
+        - name: expired
+          in: query
+          required: false
+          description: 包含过期条目
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          description: 分页偏移
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /takes/search/{query}:
+    get:
+      x-cli:
+        argv:
+          - takes
+          - search
+      summary: 搜索 takes
+      parameters:
+        - name: query
+          in: path
+          required: true
+          description: 搜索词
+          schema:
+            type: string
+        - name: semantic
+          in: query
+          required: false
+          description: 语义搜索
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          required: false
+          description: 最大结果数
+          schema:
+            type: integer
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /takes/add/{slug}:
+    post:
+      x-cli:
+        argv:
+          - takes
+          - add
+      summary: 追加 take
+      description: "[WRITE] 追加带权重的声明(markdown + DB)。"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: claim
+          in: query
+          required: true
+          description: 声明文本
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: true
+          description: 类型
+          schema:
+            type: string
+            enum:
+              - fact
+              - take
+              - bet
+              - hunch
+        - name: who
+          in: query
+          required: true
+          description: 持有者
+          schema:
+            type: string
+        - name: weight
+          in: query
+          required: false
+          description: 权重 0-1
+          schema:
+            type: number
+            default: 0.5
+        - name: source
+          in: query
+          required: false
+          description: 出处
+          schema:
+            type: string
+        - name: since
+          in: query
+          required: false
+          description: 起始日期(YYYY-MM)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /takes/update/{slug}:
+    put:
+      x-cli:
+        argv:
+          - takes
+          - update
+      summary: 更新 take 可变字段
+      description: "[WRITE] 更新权重/出处/日期;claim/kind/who 不可变(用 supersede)。"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: row
+          in: query
+          required: true
+          description: 目标行号
+          schema:
+            type: integer
+        - name: weight
+          in: query
+          required: false
+          description: 新权重
+          schema:
+            type: number
+        - name: source
+          in: query
+          required: false
+          description: 新出处
+          schema:
+            type: string
+        - name: since
+          in: query
+          required: false
+          description: 新日期(YYYY-MM)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /takes/supersede/{slug}:
+    post:
+      x-cli:
+        argv:
+          - takes
+          - supersede
+      summary: 取代 take
+      description: "[WRITE] 划掉旧行并追加新声明(保留考古记录)。"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: row
+          in: query
+          required: true
+          description: 被取代行号
+          schema:
+            type: integer
+        - name: claim
+          in: query
+          required: true
+          description: 新声明文本
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: false
+          description: 新类型
+          schema:
+            type: string
+        - name: who
+          in: query
+          required: false
+          description: 新持有者
+          schema:
+            type: string
+        - name: weight
+          in: query
+          required: false
+          description: 新权重
+          schema:
+            type: number
+        - name: source
+          in: query
+          required: false
+          description: 新出处
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /takes/resolve/{slug}:
+    post:
+      x-cli:
+        argv:
+          - takes
+          - resolve
+      summary: 记录 bet 判定
+      description: "[DESTRUCTIVE] 记录押注判定(不可变)。"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: 页面 slug
+          schema:
+            type: string
+        - name: row
+          in: query
+          required: true
+          description: 目标行号
+          schema:
+            type: integer
+        - name: quality
+          in: query
+          required: true
+          description: 判定质量
+          schema:
+            type: string
+            enum:
+              - correct
+              - incorrect
+              - partial
+        - name: evidence
+          in: query
+          required: false
+          description: 证据文本
+          schema:
+            type: string
+        - name: value
+          in: query
+          required: false
+          description: 测量值
+          schema:
+            type: number
+        - name: unit
+          in: query
+          required: false
+          description: 测量单位
+          schema:
+            type: string
+            enum:
+              - usd
+              - pct
+              - count
+        - name: by
+          in: query
+          required: false
+          description: 判定人 slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /think/{question}:
+    get:
+      x-cli:
+        argv:
+          - think
+      summary: 多跳引用综合(带引用与缺口分析)
+      description: 跨页面 + takes + 图的综合回答。不传 --save 时仅打印输出并丢弃。
+      parameters:
+        - name: question
+          in: path
+          required: true
+          description: 问题文本
+          schema:
+            type: string
+        - name: anchor
+          in: query
+          required: false
+          description: 锚定该 slug 的实体子图
+          schema:
+            type: string
+        - name: save
+          in: query
+          required: false
+          description: 持久化综合页面到 synthesis/
+          schema:
+            type: boolean
+        - name: take
+          in: query
+          required: false
+          description: 向锚定页追加 take 行(需 --anchor)
+          schema:
+            type: boolean
+        - name: source
+          in: query
+          required: false
+          description: 限定证据收集来源
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件
+  /lsd/{question}:
+    get:
+      x-cli:
+        argv:
+          - lsd
+      summary: 横向突触漂移头脑风暴
+      description: 反向评委头脑风暴(远相似性最大化)。输出默认临时,传 --save 才持久化。
+      parameters:
+        - name: question
+          in: path
+          required: true
+          description: 问题文本
+          schema:
+            type: string
+        - name: json
+          in: query
+          required: false
+          description: JSON 输出
+          schema:
+            type: boolean
+        - name: save
+          in: query
+          required: false
+          description: 持久化到 wiki/ideas/
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          required: false
+          description: 远岸页面数
+          schema:
+            type: integer
+            default: 12
+        - name: max-cost
+          in: query
+          required: false
+          description: 估算成本上限 USD
+          schema:
+            type: number
+            default: 5
+      responses:
+        "200":
+          description: SSE 流:stdout/stderr 事件 + 末尾 exit 事件

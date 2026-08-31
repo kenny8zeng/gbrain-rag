@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": [
+      "bun"
+    ],
+    "paths": {
+      "@core/*": [
+        "packages/core/src/*"
+      ]
+    },
+    "baseUrl": "."
+  },
+  "include": [
+    "apps/**/*.ts",
+    "packages/**/*.ts",
+    "tests/**/*.ts"
+  ]
+}
