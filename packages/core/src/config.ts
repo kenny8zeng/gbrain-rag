@@ -23,6 +23,14 @@ export const configSchema = z.object({
   JOB_STALE_MS: z.coerce.number().int().positive().default(1_800_000),
   JOB_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(104_857_600),
+  /** 跨域来源列表（逗号分隔；空=关闭；* = 显式全放行） */
+  CORS_ORIGINS: z.string().default("").refine((v) => {
+    for (const entry of v.split(",").map((e) => e.trim()).filter(Boolean)) {
+      if (entry === "*") continue;
+      if (!/^[a-z][a-z0-9+.-]*:\/\/[^/]+$/i.test(entry)) return false;
+    }
+    return true;
+  }, "CORS_ORIGINS entries must be origins (scheme://host[:port]) or '*'"),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -41,4 +49,9 @@ export function docsDir(cfg: Config, kbId: string): string {
 
 export function incomingDir(cfg: Config): string {
   return path.join(cfg.DATA_DIR, "incoming");
+}
+
+/** 解析后的跨域来源列表（空数组 = 特性关闭） */
+export function corsOrigins(cfg: Config): string[] {
+  return cfg.CORS_ORIGINS.split(",").map((e) => e.trim()).filter(Boolean);
 }

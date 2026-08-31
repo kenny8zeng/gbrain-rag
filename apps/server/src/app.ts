@@ -13,6 +13,7 @@ import { registerSystemRoutes } from "./openapi/routes/system";
 import { registerTenantRoutes } from "./openapi/routes/tenant";
 import { registerAdminRoutes } from "./openapi/routes/admin";
 import { registerDocsUi } from "./openapi/ui";
+import { corsMiddleware } from "./middleware/cors";
 
 export interface Services {
   cfg: Config;
@@ -93,6 +94,9 @@ export function createApp(svc: Services): OpenAPIHono<Env> {
     name: "X-API-Key",
     description: "租户密钥（gbrag_...）",
   });
+
+  // CORS：先于一切路由与鉴权（预检免鉴权直接应答，FR-005）
+  app.use("*", corsMiddleware(svc.cfg));
 
   const admin = requireAdmin(svc.cfg);
   const tenant = requireTenant(svc.lookupKey);

@@ -180,7 +180,13 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ---
 
-- [ ] T049 [P] 性能优化：REST 检索改走常驻 gbrain serve --http 通道（消除逐请求 CLI 进程启动 ~0.5s）。实测（T046）：10 路并发下 CLI spawn 路径 P95≈2.6-2.9s，超出 SC-002 的 2s 目标；单调用 ~0.5s 达标。方案：启动期注册内部 OAuth client（federated-read=全部 kb-*），建库时 rescope 纳管；检索经 Upstream.proxy 调 MCP search/query（source_id 钉定）。回归口径：复跑 scripts/scale-check.ts 断言 P95 ≤ 2000ms。
+- [ ] T049 [P] 性能优化：REST 检索改走常驻 gbrain serve --http 通道（消除逐请求 CLI 进程启动 ~0.5s）。实测（T046）：10 路并发下 CLI spawn 路径 P50≈1054ms / P95≈2636ms，超出 SC-002 的 2s 目标；单调用 ~0.5s 达标。
+  - **需求（升格，2026-08-31 评审门 CHK017-023 通过）**：
+    - SC-T049-1：复跑 scripts/scale-check.ts（400 样本/20 库/10 并发）P95 ≤ 2000ms，且 P50 较基线（1054ms）不劣化。
+    - SC-T049-2：检索响应形状与既有契约一致（slug/title/snippet/score/source_id + mode/degraded），既有 us4 集成测试零改动通过。
+    - SC-T049-3：隔离语义不变：per-KB source_id 钉定、federated-read 不可越权（us3 断言仍绿）；内部 client 只读（--scopes read）。
+    - SC-T049-4：serve 通道故障时自动降级 CLI spawn 路径，接口可用性不中断（日志记录降级事件）。
+  - **实现要点**：启动期（或首次建库时）注册内部 OAuth client `rag-internal-*`（--scopes read --source 首个 kb-* --federated-read 全部 kb-*）；建库/清除时 rescope 纳管/剔除；检索经 Upstream 以 JSON-RPC tools/call（search/query + source_id 钉定）执行，响应 normalizeHits 后返回；失败回退 CLI。
 
 ## Dependencies & Execution Order
 
