@@ -180,6 +180,8 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ---
 
+- [ ] T049 [P] 性能优化：REST 检索改走常驻 gbrain serve --http 通道（消除逐请求 CLI 进程启动 ~0.5s）。实测（T046）：10 路并发下 CLI spawn 路径 P95≈2.6-2.9s，超出 SC-002 的 2s 目标；单调用 ~0.5s 达标。方案：启动期注册内部 OAuth client（federated-read=全部 kb-*），建库时 rescope 纳管；检索经 Upstream.proxy 调 MCP search/query（source_id 钉定）。回归口径：复跑 scripts/scale-check.ts 断言 P95 ≤ 2000ms。
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

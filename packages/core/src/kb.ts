@@ -64,31 +64,36 @@ interface SourcesListOpts {
   now?: () => number;
 }
 
-/** 30s 缓存的 sources 列表（热路径上的存在性/归档检查用） */
-let cache: { at: number; data: SourceRow[] } | null = null;
+/** 30s 缓存的 sources 快照（列表 + 归档集合一次取齐，热路径零额外进程） */
+let cache: { at: number; all: SourceRow[]; archived: Set<string> } | null = null;
 const CACHE_MS = 30_000;
 
 export function invalidateSourceCache(): void {
   cache = null;
 }
 
-async function listAllSources(cfg: Config): Promise<SourceRow[]> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.data;
-  const j = await runGbrainJson<SourcesListResponse>(cfg, { args: ["sources", "list"], timeoutMs: 30_000 });
-  cache = { at: Date.now(), data: j.sources ?? [] };
-  return cache.data;
+async function snapshot(cfg: Config): Promise<{ all: SourceRow[]; archived: Set<string> }> {
+  if (cache && Date.now() - cache.at < CACHE_MS) return cache;
+  const [list, archived] = await Promise.all([
+    runGbrainJson<SourcesListResponse>(cfg, { args: ["sources", "list"], timeoutMs: 30_000 }),
+    runGbrainJson<{ sources?: { id: string }[] }>(cfg, { args: ["sources", "archived"], timeoutMs: 30_000 }),
+  ]);
+  cache = {
+    at: Date.now(),
+    all: list.sources ?? [],
+    archived: new Set((archived.sources ?? []).map((s) => s.id)),
+  };
+  return cache;
 }
 
-async function listArchivedIds(cfg: Config): Promise<Set<string>> {
-  const j = await runGbrainJson<{ sources?: { id: string }[] }>(cfg, {
-    args: ["sources", "archived"],
-    timeoutMs: 30_000,
-  });
-  return new Set((j.sources ?? []).map((s) => s.id));
+async function listAllSources(cfg: Config): Promise<SourceRow[]> {
+  return (await snapshot(cfg)).all;
 }
 
 export async function listKbs(cfg: Config): Promise<KbSummary[]> {
-  const [all, archived] = await Promise.all([listAllSources(cfg), listArchivedIds(cfg)]);
+  const snap = await snapshot(cfg);
+  const all = snap.all;
+  const archived = snap.archived;
   return all
     .filter((s) => isKbId(s.id))
     .map((s) => ({
@@ -104,10 +109,9 @@ export async function listKbs(cfg: Config): Promise<KbSummary[]> {
 /** 热路径校验：存在且 active；不存在 → KbNotFoundError，归档 → KbArchivedError */
 export async function ensureKbActive(cfg: Config, kbId: string): Promise<void> {
   if (!isKbId(kbId)) throw new KbNotFoundError(kbId);
-  const all = await listAllSources(cfg);
-  if (!all.some((s) => s.id === kbId)) throw new KbNotFoundError(kbId);
-  const archived = await listArchivedIds(cfg);
-  if (archived.has(kbId)) throw new KbArchivedError(kbId);
+  const snap = await snapshot(cfg);
+  if (!snap.all.some((s) => s.id === kbId)) throw new KbNotFoundError(kbId);
+  if (snap.archived.has(kbId)) throw new KbArchivedError(kbId);
 }
 
 function git(args: string[], cwd: string): void {
