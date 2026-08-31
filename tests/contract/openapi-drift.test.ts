@@ -28,6 +28,7 @@ let registeredPaths: string[];
 let tmpDir: string;
 // 白名单使用归一化形态（:param → {param}）：基础设施路由本身即文档/资源，不进业务描述
 const WHITELIST = new Set([
+  "/*", // cors 中间件注册的全局匹配（非业务端点）
   "/openapi.json",
   "/docs",
   "/swagger-ui/{file}",
@@ -69,6 +70,8 @@ beforeAll(() => {
     retrieve: async () => {
       throw new Error("not used in drift test");
     },
+    onKbCreated: async () => undefined,
+    onKbPurged: async () => undefined,
   });
 
   const doc = buildOpenApiDoc(app);

@@ -26,6 +26,8 @@ export interface Services {
   doclingOk: () => Promise<boolean>;
   submitJob: (input: { kbId: string; type: "file" | "url" | "md"; sourceRef: string; title?: string | null }) => Promise<{ id: string; status: string }>;
   retrieve: (kbId: string, input: RetrievalInput) => Promise<RetrievalResponse>;
+  onKbCreated: (kbId: string) => Promise<void>;
+  onKbPurged: () => Promise<void>;
 }
 
 /** 422 统一 envelope（OpenAPIHono 校验失败的出口） */

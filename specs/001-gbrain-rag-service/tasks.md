@@ -180,7 +180,7 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ---
 
-- [ ] T049 [P] 性能优化：REST 检索改走常驻 gbrain serve --http 通道（消除逐请求 CLI 进程启动 ~0.5s）。实测（T046）：10 路并发下 CLI spawn 路径 P50≈1054ms / P95≈2636ms，超出 SC-002 的 2s 目标；单调用 ~0.5s 达标。
+- [X] T049 [P] 性能优化：REST 检索改走常驻 gbrain serve --http 通道（消除逐请求 CLI 进程启动 ~0.5s）。实测（T046）：10 路并发下 CLI spawn 路径 P50≈1054ms / P95≈2636ms，超出 SC-002 的 2s 目标；单调用 ~0.5s 达标。
   - **需求（升格，2026-08-31 评审门 CHK017-023 通过）**：
     - SC-T049-1：复跑 scripts/scale-check.ts（400 样本/20 库/10 并发）P95 ≤ 2000ms，且 P50 较基线（1054ms）不劣化。
     - SC-T049-2：检索响应形状与既有契约一致（slug/title/snippet/score/source_id + mode/degraded），既有 us4 集成测试零改动通过。

@@ -6,6 +6,7 @@ import { loadAdminProxy } from "@core/admin-proxy";
 import { lookupKeyByHash } from "@core/credentials";
 import { processIngestJob } from "@core/ingest/pipeline";
 import { retrieve } from "@core/retrieval";
+import { InternalRetrieval } from "@core/retrieval-serve";
 import { createApp, type Services } from "./app";
 import { startSupervisor } from "./supervisor";
 import { startWorker } from "./worker";
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
     audit: (o) => console.log(JSON.stringify(o)),
   });
   const adminProxy = loadAdminProxy(cfg.ADMIN_SPEC_DIR);
+  const internalRetrieval = new InternalRetrieval(cfg, upstream);
 
   const submitJob: Services["submitJob"] = async ({ kbId, type, sourceRef, title }) => {
     const rows = await db`
@@ -50,7 +52,17 @@ async function main(): Promise<void> {
     serveReady: () => supervisor.ready(),
     doclingOk: doclingProbe(cfg.DOCLING_URL),
     submitJob,
-    retrieve: (kbId, input) => retrieve(cfg, kbId, input),
+    retrieve: async (kbId, input) => {
+      // T049：优先常驻 serve 通道，故障降级 CLI spawn（SC-T049-4）
+      try {
+        return await internalRetrieval.retrieve(kbId, input);
+      } catch (e) {
+        console.log(JSON.stringify({ evt: "retrieval_fallback", kb: kbId, error: (e as Error).message.slice(0, 200) }));
+        return retrieve(cfg, kbId, input);
+      }
+    },
+    onKbCreated: (kbId) => internalRetrieval.onKbCreated(kbId),
+    onKbPurged: () => internalRetrieval.onKbPurged(),
   };
 
   const app = createApp(services);

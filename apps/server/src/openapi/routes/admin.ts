@@ -104,6 +104,7 @@ export function registerAdminRoutes(app: OpenAPIHono<Env>, svc: Services, admin:
       return c.json({ error: { code: "INVALID_PARAMS", message: "name is required (1-200 chars)" } }, 422);
     }
     const kb = await createKb(svc.cfg, svc.db, parsed.data.name);
+    await svc.onKbCreated(kb.id); // 内部检索 client 纳管（T049）
     return c.json({ id: kb.id, name: kb.name, status: kb.status, created_at: new Date().toISOString() }, 201);
   }));
 
@@ -193,6 +194,7 @@ export function registerAdminRoutes(app: OpenAPIHono<Env>, svc: Services, admin:
     const id = c.req.param("id")!;
     try {
       await purgeKb(svc.cfg, id);
+      await svc.onKbPurged();
       return c.json({ id, status: "purged" });
     } catch (e) {
       return kbState(c, e);
