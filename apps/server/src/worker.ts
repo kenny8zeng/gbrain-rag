@@ -31,7 +31,8 @@ function delay(ms: number): Promise<void> {
  */
 export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Promise<IngestOutcome>): WorkerHandle {
   let stopped = false;
-  let current: Promise<void> | null = null;
+  const current = new Set<Promise<void>>();
+  const concurrency = Math.max(1, Number(process.env.WORKER_CONCURRENCY ?? 2));
 
   async function recoverStale(): Promise<void> {
     const seconds = Math.floor(cfg.JOB_STALE_MS / 1000);
@@ -84,9 +85,9 @@ export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Pr
         clearInterval(hb);
       }
     };
-    current = run();
-    await current;
-    current = null;
+    const p = run();
+    current.add(p);
+    void p.finally(() => current.delete(p));
   }
 
   async function loop(): Promise<void> {
@@ -103,15 +104,18 @@ export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Pr
     const retentionTimer = setInterval(() => void runRetention(), 24 * 3600 * 1000);
     retentionTimer.unref?.();
 
-    while (!stopped) {
-      try {
-        await tick();
-      } catch (e) {
-        console.error(JSON.stringify({ evt: "worker_tick_error", error: (e as Error).message }));
-        await delay(3_000);
+    const loops = Array.from({ length: concurrency }, async () => {
+      while (!stopped) {
+        try {
+          await tick();
+        } catch (e) {
+          console.error(JSON.stringify({ evt: "worker_tick_error", error: (e as Error).message }));
+          await delay(3_000);
+        }
+        await delay(1_500);
       }
-      await delay(1_500);
-    }
+    });
+    await Promise.all(loops);
   }
 
   const loopPromise = loop();
@@ -120,7 +124,7 @@ export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Pr
     stop: async () => {
       stopped = true;
       await loopPromise.catch(() => undefined);
-      await current?.catch(() => undefined);
+      await Promise.allSettled([...current]);
     },
   };
 }

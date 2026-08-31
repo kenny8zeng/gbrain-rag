@@ -19,7 +19,7 @@ export const configSchema = z.object({
   MCP_SURFACE: z.enum(["verbs", "starter", "full"]).default("starter"),
   MCP_DEFAULT_CONCURRENCY: z.coerce.number().int().positive().default(4),
   JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
-  JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+  JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000), // docling 调用另受 110s 下限约束
   JOB_STALE_MS: z.coerce.number().int().positive().default(1_800_000),
   JOB_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(104_857_600),

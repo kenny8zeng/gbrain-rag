@@ -90,7 +90,7 @@ gated("US2+US4: 导入与检索", () => {
     const submit = await fetch(`${BASE}/v1/kb/${kb}/documents`, {
       method: "POST",
       headers: { "X-API-Key": key, "Content-Type": "application/json" },
-      body: JSON.stringify({ url: "https://nonexistent-gbrain-rag-test.invalid/x" }),
+      body: JSON.stringify({ url: "http://127.0.0.1:1/nope" }),
     });
     expect(submit.status).toBe(202);
     const job = await waitJob(key, kb, (await submit.json()).job_id, 300_000);
