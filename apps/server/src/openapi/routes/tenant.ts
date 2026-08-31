@@ -1,0 +1,323 @@
+import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
+import type { Context, Next } from "hono";
+import type { Services } from "../../app";
+import type { Env } from "../../middleware/auth";
+import { libHandler } from "../handler";
+import { canReadKb, canWriteKb } from "../../middleware/auth";
+import { ensureKbActive, KbNotFoundError, KbArchivedError } from "@core/kb";
+import { runGbrain, runGbrainJson } from "@core/gbrain-cli";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { randomBytes } from "node:crypto";
+import {
+  ErrorEnvelope,
+  JobView,
+  RetrievalBody,
+  RetrievalResponse,
+  SubmitAccepted,
+  UrlImportBody,
+} from "../schemas";
+
+export type TenantMiddleware = (c: Context<Env>, next: Next) => Promise<Response | void>;
+
+function kbState(c: Context<Env>, e: unknown) {
+  if (e instanceof KbNotFoundError) {
+    return c.json({ error: { code: "NOT_FOUND", message: e.message } }, 404);
+  }
+  if (e instanceof KbArchivedError) {
+    return c.json({ error: { code: "ARCHIVED", message: e.message } }, 410);
+  }
+  throw e;
+}
+
+function jobJson(r: Record<string, unknown>) {
+  return {
+    id: r.id,
+    kb_id: r.kb_id,
+    type: r.type,
+    status: r.status,
+    attempts: r.attempts,
+    error: r.error,
+    outcome: r.outcome,
+    doc_slug: r.doc_slug,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+}
+
+function incomingDir(cfg: Services["cfg"]): string {
+  return path.join(cfg.DATA_DIR, "incoming");
+}
+
+function randomHex(n: number): string {
+  return [...randomBytes(n)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+const KbIdParam = z.object({ id: z.string() });
+const err403 = () =>
+  ({
+    403: { description: "越权", content: { "application/json": { schema: ErrorEnvelope } } },
+  }) as const;
+const err404 = (desc: string) =>
+  ({
+    404: { description: desc, content: { "application/json": { schema: ErrorEnvelope } } },
+  }) as const;
+const err410 = () =>
+  ({
+    410: { description: "知识库已归档", content: { "application/json": { schema: ErrorEnvelope } } },
+  }) as const;
+
+export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenant: TenantMiddleware): void {
+  // 提交导入（三态输入；handler 内手动解析，openapi 声明三种 content）
+  const submit = createRoute({
+    method: "post",
+    path: "/v1/kb/{id}/documents",
+    tags: ["tenant"],
+    summary: "提交导入（multipart 文件 / {url} / text-markdown）",
+    middleware: [tenant],
+    security: [{ apiKey: [] }],
+    request: {
+      params: KbIdParam,
+      body: {
+        required: true,
+        content: {
+          "multipart/form-data": {
+            // 三态输入不可由 OpenAPIHono 统一校验（会以任一声明 schema 拒绝其余 content-type 的合法请求），
+            // 故全部声明为宽松形状，必填语义由 handler 强制执行（422/413 与迁移前完全一致）
+            schema: z.object({
+              file: z.string().openapi({ format: "binary" }).optional().describe("必填（服务端校验）"),
+              title: z.string().optional(),
+            }),
+          },
+          "application/json": {
+            schema: z.object({ url: z.url().optional().describe("必填（服务端校验）"), title: z.string().optional() }),
+          },
+          "text/markdown": { schema: z.string() },
+        },
+      },
+    },
+    responses: {
+      202: { description: "已受理", content: { "application/json": { schema: SubmitAccepted } } },
+      ...err403(),
+      ...err404("知识库不存在"),
+      ...err410(),
+      413: { description: "文件超过大小上限", content: { "application/json": { schema: ErrorEnvelope } } },
+      422: { description: "参数不合法", content: { "application/json": { schema: ErrorEnvelope } } },
+    },
+  });
+  app.openapi(submit, libHandler<typeof submit>(async (c) => {
+    const kbId = c.req.param("id")!;
+    const key = c.get("keyRow");
+    if (!canWriteKb(key, kbId)) {
+      return c.json({ error: { code: "FORBIDDEN", message: "import requires the write partition" } }, 403);
+    }
+    try {
+      await ensureKbActive(svc.cfg, kbId);
+    } catch (e) {
+      return kbState(c, e);
+    }
+
+    const contentType = c.req.header("content-type") ?? "";
+    mkdirSync(incomingDir(svc.cfg), { recursive: true });
+
+    if (contentType.includes("multipart/form-data")) {
+      const body = await c.req.parseBody();
+      const file = body["file"];
+      if (!(file instanceof File)) {
+        return c.json({ error: { code: "INVALID_PARAMS", message: 'multipart field "file" is required' } }, 422);
+      }
+      if (file.size > svc.cfg.MAX_UPLOAD_BYTES) {
+        return c.json(
+          { error: { code: "PAYLOAD_TOO_LARGE", message: `file exceeds ${svc.cfg.MAX_UPLOAD_BYTES} bytes` } },
+          413,
+        );
+      }
+      const stored = `${Date.now()}-${randomHex(6)}-${file.name.replace(/[^\w.-]+/g, "_")}`;
+      const buf = await file.arrayBuffer();
+      writeFileSync(path.join(incomingDir(svc.cfg), stored), Buffer.from(buf));
+      const title = typeof body["title"] === "string" && body["title"] ? body["title"] : null;
+      const job = await svc.submitJob({ kbId, type: "file", sourceRef: stored, title });
+      return c.json({ job_id: job.id, kb_id: kbId, status: job.status }, 202);
+    }
+
+    if (contentType.includes("application/json")) {
+      const parsed = UrlImportBody.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) {
+        return c.json({ error: { code: "INVALID_PARAMS", message: "{url} is required" } }, 422);
+      }
+      const job = await svc.submitJob({
+        kbId,
+        type: "url",
+        sourceRef: parsed.data.url,
+        title: parsed.data.title ?? null,
+      });
+      return c.json({ job_id: job.id, kb_id: kbId, status: job.status }, 202);
+    }
+
+    if (contentType.includes("text/markdown") || contentType.includes("text/plain")) {
+      const md = await c.req.text();
+      if (!md.trim()) {
+        return c.json({ error: { code: "INVALID_PARAMS", message: "markdown body is empty" } }, 422);
+      }
+      const stored = `${Date.now()}-${randomHex(6)}.md`;
+      writeFileSync(path.join(incomingDir(svc.cfg), stored), md, "utf8");
+      const title = c.req.header("x-slug") ?? null;
+      const job = await svc.submitJob({ kbId, type: "md", sourceRef: stored, title });
+      return c.json({ job_id: job.id, kb_id: kbId, status: job.status }, 202);
+    }
+
+    return c.json(
+      {
+        error: {
+          code: "INVALID_PARAMS",
+          message: "unsupported content-type; use multipart, application/json {url}, or text/markdown",
+        },
+      },
+      422,
+    );
+  }));
+
+  // 页面列表（读）
+  const list = createRoute({
+    method: "get",
+    path: "/v1/kb/{id}/documents",
+    tags: ["tenant"],
+    summary: "页面列表",
+    middleware: [tenant],
+    security: [{ apiKey: [] }],
+    request: { params: KbIdParam },
+    responses: {
+      200: {
+        description: "页面列表",
+        content: {
+          "application/json": {
+            schema: z.object({ kb_id: z.string(), pages: z.array(z.record(z.string(), z.unknown())) }),
+          },
+        },
+      },
+      ...err403(),
+      ...err404("知识库不存在"),
+      ...err410(),
+    },
+  });
+  app.openapi(list, libHandler<typeof list>(async (c) => {
+    const kbId = c.req.param("id")!;
+    const key = c.get("keyRow");
+    if (!canReadKb(key, kbId)) {
+      return c.json({ error: { code: "FORBIDDEN", message: "kb not authorized for this key" } }, 403);
+    }
+    try {
+      await ensureKbActive(svc.cfg, kbId);
+    } catch (e) {
+      return kbState(c, e);
+    }
+    const j = await runGbrainJson<{ pages?: Array<Record<string, unknown>> }>(svc.cfg, {
+      args: ["list", "--limit", "200"],
+      source: kbId,
+      timeoutMs: 30_000,
+    });
+    return c.json({ kb_id: kbId, pages: j.pages ?? [] });
+  }));
+
+  // 删除页面（写）
+  const del = createRoute({
+    method: "delete",
+    path: "/v1/kb/{id}/documents/{slug}",
+    tags: ["tenant"],
+    summary: "删除页面",
+    middleware: [tenant],
+    security: [{ apiKey: [] }],
+    request: { params: z.object({ id: z.string(), slug: z.string() }) },
+    responses: {
+      204: { description: "已删除" },
+      ...err403(),
+      ...err404("知识库不存在"),
+      ...err410(),
+    },
+  });
+  app.openapi(del, libHandler<typeof del>(async (c) => {
+    const kbId = c.req.param("id")!;
+    const slug = c.req.param("slug")!;
+    const key = c.get("keyRow");
+    if (!canWriteKb(key, kbId)) {
+      return c.json({ error: { code: "FORBIDDEN", message: "kb not authorized for this key" } }, 403);
+    }
+    if (!slug.startsWith(`${kbId}/`)) {
+      return c.json({ error: { code: "FORBIDDEN", message: "slug outside partition fence" } }, 403);
+    }
+    try {
+      await ensureKbActive(svc.cfg, kbId);
+    } catch (e) {
+      return kbState(c, e);
+    }
+    await runGbrain(svc.cfg, { args: ["delete", slug], source: kbId, timeoutMs: 60_000 });
+    return c.body(null, 204);
+  }));
+
+  // 任务状态
+  const jobStatus = createRoute({
+    method: "get",
+    path: "/v1/kb/{id}/documents/jobs/{jobId}",
+    tags: ["tenant"],
+    summary: "导入任务状态",
+    middleware: [tenant],
+    security: [{ apiKey: [] }],
+    request: { params: z.object({ id: z.string(), jobId: z.string() }) },
+    responses: {
+      200: { description: "任务详情", content: { "application/json": { schema: JobView } } },
+      ...err403(),
+      404: { description: "任务不存在", content: { "application/json": { schema: ErrorEnvelope } } },
+    },
+  });
+  app.openapi(jobStatus, libHandler<typeof jobStatus>(async (c) => {
+    const kbId = c.req.param("id")!;
+    const key = c.get("keyRow");
+    if (!canReadKb(key, kbId)) {
+      return c.json({ error: { code: "FORBIDDEN", message: "kb not authorized for this key" } }, 403);
+    }
+    const rows = await svc.db`SELECT * FROM rag_jobs WHERE id = ${c.req.param("jobId")!} LIMIT 1`;
+    if (rows.length === 0 || (rows[0] as Record<string, unknown>).kb_id !== kbId) {
+      return c.json({ error: { code: "NOT_FOUND", message: "job not found" } }, 404);
+    }
+    return c.json(jobJson(rows[0] as Record<string, unknown>));
+  }));
+
+  // 检索
+  const retrieval = createRoute({
+    method: "post",
+    path: "/v1/kb/{id}/retrieval",
+    tags: ["tenant"],
+    summary: "检索（hybrid/keyword）",
+    middleware: [tenant],
+    security: [{ apiKey: [] }],
+    request: {
+      params: KbIdParam,
+      body: { required: true, content: { "application/json": { schema: RetrievalBody } } },
+    },
+    responses: {
+      200: { description: "检索结果", content: { "application/json": { schema: RetrievalResponse } } },
+      ...err403(),
+      ...err404("知识库不存在"),
+      ...err410(),
+      422: { description: "参数不合法", content: { "application/json": { schema: ErrorEnvelope } } },
+    },
+  });
+  app.openapi(retrieval, libHandler<typeof retrieval>(async (c) => {
+    const kbId = c.req.param("id")!;
+    const key = c.get("keyRow");
+    if (!canReadKb(key, kbId)) {
+      return c.json({ error: { code: "FORBIDDEN", message: "kb not authorized for this key" } }, 403);
+    }
+    try {
+      await ensureKbActive(svc.cfg, kbId);
+    } catch (e) {
+      return kbState(c, e);
+    }
+    const parsed = RetrievalBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json({ error: { code: "INVALID_PARAMS", message: "query (1-2000 chars) is required" } }, 422);
+    }
+    const result = await svc.retrieve(kbId, parsed.data);
+    return c.json(result);
+  }));
+}

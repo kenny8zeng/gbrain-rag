@@ -43,10 +43,16 @@ export function normalizeHits(raw: RawHit[]): RetrievalHit[] {
   }));
 }
 
+export interface RetrievalInput {
+  query: string;
+  mode?: "hybrid" | "keyword";
+  topK?: number;
+}
+
 export async function retrieve(
   cfg: Config,
   kbId: string,
-  input: { query: string; mode?: "hybrid" | "keyword"; topK?: number },
+  input: RetrievalInput,
 ): Promise<RetrievalResponse> {
   const mode = input.mode ?? "hybrid";
   const args =

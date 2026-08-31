@@ -5,7 +5,7 @@ export const configSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   ADMIN_TOKEN: z.string().min(16, "ADMIN_TOKEN must be at least 16 characters"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  DOCLING_URL: z.string().url("DOCLING_URL must be a valid URL"),
+  DOCLING_URL: z.url("DOCLING_URL must be a valid URL"),
   GBRAIN_BIN: z.string().default("/usr/local/bin/gbrain"),
   GBRAIN_SERVE_PORT: z.coerce.number().int().positive().default(7333),
   /** 宿主机开发时可设 false 跳过 serve 子进程（MCP 面不可用） */

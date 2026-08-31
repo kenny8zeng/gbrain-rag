@@ -5,6 +5,9 @@ import type { Config } from "@core/config";
 
 export type Env = { Variables: { keyRow: KeyRow } };
 
+export type AdminMiddleware = (c: Context, next: Next) => Promise<Response | void>;
+export type TenantMiddleware = (c: Context<Env>, next: Next) => Promise<Response | void>;
+
 export function requireAdmin(cfg: Config) {
   return async (c: Context, next: Next): Promise<Response | void> => {
     const header = c.req.header("authorization");

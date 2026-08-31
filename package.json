@@ -13,10 +13,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hono/zod-openapi": "^1.6.1",
     "cli2api": "github:kenny8zeng/cli2api#4359231ec0401e252562c8881629dd32b052ee97",
     "hono": "^4.9.0",
+    "swagger-ui-dist": "^5",
     "yaml": "^2.9.0",
-    "zod": "^3.25.76"
+    "zod": "^4"
   },
   "devDependencies": {
     "@types/bun": "latest",

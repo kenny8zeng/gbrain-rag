@@ -5,6 +5,7 @@ import { McpGateway } from "@core/mcp-gateway";
 import { loadAdminProxy } from "@core/admin-proxy";
 import { lookupKeyByHash } from "@core/credentials";
 import { processIngestJob } from "@core/ingest/pipeline";
+import { retrieve } from "@core/retrieval";
 import { createApp, type Services } from "./app";
 import { startSupervisor } from "./supervisor";
 import { startWorker } from "./worker";
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
     serveReady: () => supervisor.ready(),
     doclingOk: doclingProbe(cfg.DOCLING_URL),
     submitJob,
+    retrieve: (kbId, input) => retrieve(cfg, kbId, input),
   };
 
   const app = createApp(services);
