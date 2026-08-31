@@ -61,8 +61,14 @@ async function mcpCall(apiKey: string, name: string, args: Record<string, unknow
 
 async function search(apiKey: string, query: string): Promise<{ status: number; text: string }> {
   const { status, json } = await mcpCall(apiKey, "search", { query });
-  const content = (json.result as { content?: Array<{ text?: string }> })?.content ?? [];
-  return { status, text: content.map((c) => c.text ?? "").join("\n") };
+  const result = json.result;
+  let text = "";
+  if (result && typeof result === "object" && "content" in result && Array.isArray(result.content)) {
+    text = result.content
+      .map((c) => (c && typeof c === "object" && "text" in c ? String(c.text) : ""))
+      .join("\n");
+  }
+  return { status, text };
 }
 
 gated("US3: MCP 网关隔离（SC-003）", () => {

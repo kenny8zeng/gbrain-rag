@@ -45,9 +45,9 @@ gated("US2+US4: 导入与检索", () => {
     const { job_id: jobId } = await submit.json();
 
     const job = await waitJob(key, kb, jobId);
-    expect(["done", "done_with_warnings"]).toContain(job.status);
+    expect(["done", "done_with_warnings"]).toContain(String(job.status));
     expect(job.outcome).toBe("created");
-    expect(String(job.doc_slug)).toContain(`${kb}/docs/`);
+    expect(String(job.doc_slug ?? "")).toContain(`${kb}/docs/`);
 
     // REST 检索命中（SC-002 形状）
     const hit = await (
@@ -58,7 +58,7 @@ gated("US2+US4: 导入与检索", () => {
       })
     ).json();
     expect(hit.results.length).toBeGreaterThan(0);
-    expect(hit.results[0].slug).toContain(`${kb}/docs/`);
+    expect(String(hit.results[0]?.slug ?? "")).toContain(`${kb}/docs/`);
     expect(typeof hit.results[0].score).toBe("number");
 
     // 重复导入 → updated（FR-008）
