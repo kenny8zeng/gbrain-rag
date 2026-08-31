@@ -10,49 +10,49 @@
 
 ## CORS — Requirement Completeness
 
-- [ ] CHK001 是否明确了"列表为空 = 特性关闭"的默认行为（跨域相关响应头不出现）？[Completeness, Spec §FR-001]
-- [ ] CHK002 是否覆盖全部对外 HTTP 端点（业务接口、文档页、健康检查、MCP 网关）？[Completeness, Spec §FR-002]
-- [ ] CHK003 是否定义了浏览器预检（OPTIONS）的完整处理要求（应答、免鉴权、无副作用）？[Completeness, Spec §FR-005]
-- [ ] CHK004 是否定义了"放行全部"星号值与逐条枚举混用时的明确语义？[Completeness, Spec §Edge Cases]
+- [x] CHK001 是否明确了"列表为空 = 特性关闭"的默认行为（跨域相关响应头不出现）？[Completeness, Spec §FR-001]
+- [x] CHK002 是否覆盖全部对外 HTTP 端点（业务接口、文档页、健康检查、MCP 网关）？[Completeness, Spec §FR-002]
+- [x] CHK003 是否定义了浏览器预检（OPTIONS）的完整处理要求（应答、免鉴权、无副作用）？[Completeness, Spec §FR-005]
+- [x] CHK004 是否定义了"放行全部"星号值与逐条枚举混用时的明确语义？[Completeness, Spec §Edge Cases]
 
 ## CORS — Requirement Clarity
 
-- [ ] CHK005 来源匹配语义（协议+域名+端口整体、路径忽略）是否无歧义？[Clarity, Spec §FR-003]
-- [ ] CHK006 星号"放行全部"是否明确其凭证语义边界（本服务无 Cookie 凭证）？[Clarity, Spec §FR-003, Assumptions]
-- [ ] CHK007 非法配置条目（空串、非来源格式）的启动拒绝行为是否具体？[Clarity, Spec §FR-006]
-- [ ] CHK008 SC-003"响应时延无可测劣化"是否缺少数值化或比对口径？[Clarity, Spec §SC-003, Ambiguity]
+- [x] CHK005 来源匹配语义（协议+域名+端口整体、路径忽略）是否无歧义？[Clarity, Spec §FR-003]
+- [x] CHK006 星号"放行全部"是否明确其凭证语义边界（本服务无 Cookie 凭证）？[Clarity, Spec §FR-003, Assumptions]
+- [x] CHK007 非法配置条目（空串、非来源格式）的启动拒绝行为是否具体？[Clarity, Spec §FR-006]
+- [x] CHK008 SC-003"响应时延无可测劣化"是否缺少数值化或比对口径？[Clarity, Spec §SC-003, Ambiguity]
 
 ## CORS — Requirement Consistency
 
-- [ ] CHK009 跨域要求与既有鉴权模型（请求头密钥、无 Cookie）是否一致、无冲突？[Consistency, Spec §Assumptions]
-- [ ] CHK010 Out of Scope（Cookie 凭证、运行时管理接口、子域通配、代理层）是否与 FR 范围清晰互斥？[Consistency, Spec §Out of Scope]
+- [x] CHK009 跨域要求与既有鉴权模型（请求头密钥、无 Cookie）是否一致、无冲突？[Consistency, Spec §Assumptions]
+- [x] CHK010 Out of Scope（Cookie 凭证、运行时管理接口、子域通配、代理层）是否与 FR 范围清晰互斥？[Consistency, Spec §Out of Scope]
 
 ## CORS — Acceptance Criteria Quality
 
-- [ ] CHK011 SC-001/SC-002 的"100% 可读取 / 100% 不带标记"是否定义了可执行的验证方法（样本来源选取）？[Measurability, Spec §SC-001, SC-002]
-- [ ] CHK012 SC-004 预检应答 ≤200ms 的采样口径是否明确（环境、次数）？[Measurability, Spec §SC-004]
+- [x] CHK011 SC-001/SC-002 的"100% 可读取 / 100% 不带标记"是否定义了可执行的验证方法（样本来源选取）？[Measurability, Spec §SC-001, SC-002]
+- [x] CHK012 SC-004 预检应答 ≤200ms 的采样口径是否明确（环境、次数）？[Measurability, Spec §SC-004]
 
 ## CORS — Edge Case Coverage
 
-- [ ] CHK013 是否定义端口变体（含 :8443）、scheme 变体、尾斜杠的来源规范化？[Edge Case, Spec §Edge Cases]
-- [ ] CHK014 是否覆盖 null Origin（沙箱 iframe、file://）的放行/拒绝行为？[Gap]
-- [ ] CHK015 是否定义预检缓存时长（Access-Control-Max-Age）与头回显范围（允许的方法/头清单）？[Gap]
-- [ ] CHK016 配置热刷新是否显式排除（"重启生效"假设）并写入文档？[Coverage, Spec §Assumptions]
+- [x] CHK013 是否定义端口变体（含 :8443）、scheme 变体、尾斜杠的来源规范化？[Edge Case, Spec §Edge Cases]
+- [x] CHK014 是否覆盖 null Origin（沙箱 iframe、file://）的放行/拒绝行为？[Gap]
+- [x] CHK015 是否定义预检缓存时长（Access-Control-Max-Age）与头回显范围（允许的方法/头清单）？[Gap]
+- [x] CHK016 配置热刷新是否显式排除（"重启生效"假设）并写入文档？[Coverage, Spec §Assumptions]
 
 ## T049 — 检索性能需求质量
 
-- [ ] CHK017 性能目标（10 并发下 P95 ≤ 2000ms）是否定义了测量方法（scale-check 脚本、样本量、并发构造）？[Clarity, 001 tasks T046/T049]
-- [ ] CHK018 是否记录了基线（现 CLI-spawn 路径 P50≈1054ms / P95≈2636ms，2026-08-31 实测）作为对比锚点？[Completeness, 001 tasks T046]
-- [ ] CHK019 新检索通道（常驻 serve）的隔离语义是否明确继承既有契约（per-KB 钉定、federated-read 不可越权、sources 缓存）？[Consistency, 001 contracts]
-- [ ] CHK020 内部 OAuth client 的生命周期（启动注册、建库 rescope、删除吊销）是否作为需求明确？[Completeness, Gap]
-- [ ] CHK021 若 serve 通道故障，降级/回退语义（转 CLI spawn？报错？）是否定义？[Recovery, Gap]
-- [ ] CHK022 是否定义回归闸门（scale-check 复跑 + 既有 45 项测试 + 漂移/文档测试不受影响）？[Traceability, 001 quickstart, 003 contracts]
-- [ ] CHK023 性能优化是否与 T049 之外的既有行为（REST 检索响应形状、审计日志）保持兼容性要求？[Consistency, 001 contracts rest-api.md]
+- [x] CHK017 性能目标（10 并发下 P95 ≤ 2000ms）是否定义了测量方法（scale-check 脚本、样本量、并发构造）？[Clarity, 001 tasks T046/T049]
+- [x] CHK018 是否记录了基线（现 CLI-spawn 路径 P50≈1054ms / P95≈2636ms，2026-08-31 实测）作为对比锚点？[Completeness, 001 tasks T046]
+- [x] CHK019 新检索通道（常驻 serve）的隔离语义是否明确继承既有契约（per-KB 钉定、federated-read 不可越权、sources 缓存）？[Consistency, 001 contracts]
+- [x] CHK020 内部 OAuth client 的生命周期（启动注册、建库 rescope、删除吊销）是否作为需求明确？[Completeness, Gap]
+- [x] CHK021 若 serve 通道故障，降级/回退语义（转 CLI spawn？报错？）是否定义？[Recovery, Gap]
+- [x] CHK022 是否定义回归闸门（scale-check 复跑 + 既有 45 项测试 + 漂移/文档测试不受影响）？[Traceability, 001 quickstart, 003 contracts]
+- [x] CHK023 性能优化是否与 T049 之外的既有行为（REST 检索响应形状、审计日志）保持兼容性要求？[Consistency, 001 contracts rest-api.md]
 
 ## Dependencies & Assumptions
 
-- [ ] CHK024 是否验证"常驻 serve 消除进程启动开销"的假设（0.5s/次的启动实测）在新通道下真实成立？[Assumption, 001 research D2/D3]
-- [ ] CHK025 是否记录了 gbrain MCP search/query 工具对 source_id 语义（remote caller 不能越出 grant）的依赖？[Dependency, 001 research D2]
+- [x] CHK024 是否验证"常驻 serve 消除进程启动开销"的假设（0.5s/次的启动实测）在新通道下真实成立？[Assumption, 001 research D2/D3]
+- [x] CHK025 是否记录了 gbrain MCP search/query 工具对 source_id 语义（remote caller 不能越出 grant）的依赖？[Dependency, 001 research D2]
 
 ## Notes
 
