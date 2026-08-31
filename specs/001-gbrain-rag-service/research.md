@@ -57,11 +57,11 @@ Phase 0 输出。spec 中已无 [NEEDS CLARIFICATION]；本文档解决技术选
 - **Rationale**: put 语义即"整体替换 + 引擎侧 chunk/embed/链接抽取"，正是摄取所需；embed 失败降级为 done_with_warnings（关键词检索仍可用）。
 - **Alternatives considered**: `import` 目录整导——适合批量迁移场景，单文档导入的任务粒度对不上。
 
-## D10: cli2api 提炼与 jsonArg 扩展
+## D10: cli2api 依赖策略与 format=json 扩展
 
-- **Decision**: 从 `~/workspace/gbrain-services/cli2api` 提炼 `src/{registry,runner,argv}.ts` + `clis/gbrain.yaml` 为 `packages/cli2api`；新增 `x-cli.jsonArg` spec 字段：标注该路由的 CLI JSON 输出 flag，客户端带 `?format=json` 时 runner 追加该 flag、缓冲 stdout、解析为单次 JSON 响应（解析失败 502 附 raw text）。仅对只读状态类路由标注。
-- **Rationale**: 解决 spec 评审意见 1（SSE 非结构化输出的程序化消费问题），改动局限在 runner 输出路径，与上游 cli2api 保持可同步。
-- **Alternatives considered**: 全路由强制 JSON——长任务（import/embed/reindex）的流式进度价值丢失。
+- **Decision**: cli2api 以 bun git 依赖引入（`github.com/kenny8zeng/cli2api`，构建期拉取、锁定 tag），**零源码改动**按库消费：registry（spec 解析 + argv 装配）与 runner（onEvent 回调执行）。`clis/gbrain.yaml` 为本地维护的**数据文件**（仅 binary 改指 `/usr/local/bin/gbrain`）。format=json 在网关层实现：内置 JSON 路由表（12 条只读状态路由 → 各自 `--json` flag），命中 `?format=json` 时用 runner 的 onEvent 缓冲 stdout、exit 后解析（失败 502 附 raw text），不走 SSE。
+- **Rationale**: 用户决策（避免本地分叉，小改进反馈上游升级）。已核实上游模块边界：registry/runner 为纯 TS 模块、无框架耦合，runner 事件回调设计使缓冲逻辑无需上游任何改动；上游仓库公开可达。改进反馈：jsonArg spec 注记 + binary 配置化以 PR 提交上游，合入后可删除网关侧路由表。
+- **Alternatives considered**: vendor 提炼为本地 packages/cli2api（用户否决：分叉维护成本）；强制全路由 JSON——长任务（import/embed/reindex）流式进度价值丢失。
 
 ## D11: 进程模型与生命周期
 

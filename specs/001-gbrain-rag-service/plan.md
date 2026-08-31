@@ -12,7 +12,7 @@
 
 **Language/Version**: TypeScript 5.x on Bun 1.3+
 
-**Primary Dependencies**: Hono（HTTP 路由/SSE）、Zod（请求校验）、vendored cli2api core（registry/runner/argv）、GBrain CLI v0.47+（子进程 + serve --http）、Docling-serve v1.30+（外部 HTTP）、`@modelcontextprotocol/sdk`（仅测试客户端；服务端为纯 HTTP 代理）
+**Primary Dependencies**: Hono（HTTP 路由/SSE）、Zod（请求校验）、cli2api（`github.com/kenny8zeng/cli2api`，bun git 依赖锁定 tag，按库使用 registry/runner/argv，零源码改动）、GBrain CLI v0.47+（子进程 + serve --http）、Docling-serve v1.30+（外部 HTTP）、`@modelcontextprotocol/sdk`（仅测试客户端；服务端为纯 HTTP 代理）
 
 **Storage**: PostgreSQL 16 + pgvector（GBrain schema + 自有 `rag_keys`/`rag_jobs` 表）；本地卷（per-KB git 目录、原始文档档案）
 
@@ -20,7 +20,7 @@
 
 **Target Platform**: Linux Docker（单镜像多阶段构建：Bun 应用层 + 从 `github.com/garrytan/gbrain` v0.47.6.0 源码编译的 gbrain 二进制层；compose 附 postgres:16-pgvector）
  
-**Project Type**: web-service（bun workspaces 单体：`apps/server` + `packages/core` + `packages/cli2api`）
+**Project Type**: web-service（bun workspaces 单体：`apps/server` + `packages/core`；cli2api 为 git 依赖非本地包）
 
 **Performance Goals**: SC-001 文档导入端到端（≤50 页 PDF）P95 ≤ 5 分钟；SC-002 检索 P95 ≤ 2s；SC-004 ≥20 库 / 单库 ≥1 万文档 / 10 并发检索满载不劣化
 
@@ -71,13 +71,13 @@ packages/
 │    ├── credentials.ts          # 凭证签发/变更/吊销（联动上游 register/rescope/revoke-client）
 │    ├── ingest/                 # 摄取管道（docling 调用、规范化、入库、embed）
 │    ├── retrieval.ts            # 检索（query/search --json 规范化）
-│    └── mcp-gateway.ts          # MCP 反向代理（鉴权→取凭证→换 token→转发→剥离头）
-├── cli2api/                     # 自 cli2api 项目提炼（含 x-cli.jsonArg 扩展）
-│   └── src/{registry,runner,argv}.ts + clis/gbrain.yaml
+│    ├── mcp-gateway.ts          # MCP 反向代理（鉴权→取凭证→换 token→转发→剥离头）
+│    └── admin-proxy.ts          # cli2api（git 依赖）库封装：registry 装载 + runner SSE 透传 / format=json 缓冲
 deploy/
 ├── Dockerfile                   # 多阶段：bun 应用构建层 + gbrain 源码编译层（github.com/garrytan/gbrain）
 ├── compose.yaml                 # gbrain-rag + postgres:16-pgvector
 ├── entrypoint.sh                # gbrain init --url 幂等 → 启动 server
+├── clis/gbrain.yaml             # 本地维护的 CLI spec 数据文件（binary=/usr/local/bin/gbrain）
 └── migrations/0001-init.sql     # rag_keys / rag_jobs
 tests/
 ├── contract/                    # REST/MCP 契约测试
@@ -85,8 +85,8 @@ tests/
 └── unit/                        # core 模块单测（CLI 封装 mock）
 ```
 
-**Structure Decision**: bun workspaces 单体。`packages/core` 不依赖 Hono，保证领域逻辑可用单测覆盖；`packages/cli2api` 保持与上游 cli2api 同构（registry/runner/argv + YAML spec），便于跟上游同步；`apps/server` 只做装配。
-
+**Structure Decision**: bun workspaces 单体。`packages/core` 不依赖 Hono，保证领域逻辑可用单测覆盖；cli2api 不做本地分叉，以 git 依赖引入并按库消费，小改进（jsonArg 注记、binary 配置化）以 PR 反馈上游；`apps/server` 只做装配。
+ 
 ## Complexity Tracking
 
 > **Fill ONLY if Constitution Check has violations that must be justified**

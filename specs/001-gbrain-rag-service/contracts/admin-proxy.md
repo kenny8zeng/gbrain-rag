@@ -1,10 +1,10 @@
 # Contract: Admin Proxy (`/v1/admin/gbrain/*`)
 
-vendored cli2api（packages/cli2api）以库形态挂载，`clis/gbrain.yaml` 55 路由全部经 Hono 子路由暴露。鉴权统一为管理面 Bearer（cli2api 自身 API_TOKEN 机制由网关中间件替代，不再单独设 token）。
+cli2api 以 **bun git 依赖**引入（`github.com/kenny8zeng/cli2api`，锁定 tag，零源码改动），按库消费其 registry（路由匹配/argv 装配）与 runner（onEvent 执行）；挂载于 Hono 子路由，`deploy/clis/gbrain.yaml`（本地数据文件）55 路由全部暴露。鉴权统一为管理面 Bearer（cli2api 自身 API_TOKEN 机制由网关中间件替代，不再单独设 token）。
 
 ## 默认行为：SSE 流式
 
-与上游 cli2api 语义一致：HTTP 请求 → argv（path/query/header 按 cli2api 映射规则）→ spawn 镜像内 `/usr/local/bin/gbrain`（上游项目的 `fixtures/gbrain` docker-exec wrapper 不随库迁移，本服务内 gbrain 为本地二进制）。响应 SSE：
+与上游 cli2api 语义一致：HTTP 请求 → argv（path/query/header 按 cli2api 映射规则）→ spawn 镜像内 `/usr/local/bin/gbrain`（上游 `fixtures/gbrain` 的 docker-exec wrapper 不适用，本服务内 gbrain 为本地二进制，spec 数据文件已改 binary 路径）。响应 SSE：
 
 ```text
 event: stdout
@@ -21,15 +21,16 @@ data: {"exitCode":0,"reason":"exit","durationMs":123}
 
 ## 扩展行为：`?format=json`
 
-仅对 spec 中标注 `x-cli.jsonArg` 的只读状态类路由生效（初版清单：sources list、sources status、sources archived、jobs list、jobs get、jobs stats、stats、health、features、storage status、engine status、auth clients）。带 `?format=json` 时：
+仅对网关内置 **JSON 路由表**中的只读状态类路由生效（初版清单：sources list、sources status、sources archived、jobs list、jobs get、jobs stats、stats、health、features、storage status、engine status、auth clients，各自映射 CLI 的 `--json` 类 flag）。带 `?format=json` 时：
 
-1. runner 追加该路由声明的 JSON flag（如 `--json`）
-2. 缓冲 stdout，不流式
+1. 网关组装 argv 时追加该路由的 JSON flag（追加发生在我们的封装层，cli2api 源码零改动）
+2. 经 runner 的 onEvent 回调缓冲 stdout，不流式
 3. exit 0 且输出可 JSON 解析 → `200 application/json`
 4. exit 0 但解析失败 → `502 {"error":{"code":"UPSTREAM_NOT_JSON","raw":"<text>"}}`
 5. exit ≠ 0 → `502 {"error":{"code":"CLI_FAILED","exitCode":N,"stderr":"..."}}`
 
-未标注路由带 `?format=json` → 400 `FORMAT_NOT_SUPPORTED`。
+未列入路由表的路由带 `?format=json` → 400 `FORMAT_NOT_SUPPORTED`。该行为以提案反馈上游（jsonArg spec 注记 + binary 配置化），合入后迁移至上游实现。
+
 
 ## 白名单与安全
 

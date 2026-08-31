@@ -16,7 +16,7 @@
 
 ## Path Conventions
 
-bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`packages/core/src/`、`packages/cli2api/`、`deploy/`、`tests/{contract,integration,unit}/`
+bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`packages/core/src/`、`deploy/`、`tests/{contract,integration,unit}/`；cli2api 为 git 依赖（非本地包）
 
 ---
 
@@ -24,11 +24,11 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 **Purpose**: 工程骨架、依赖、部署资产就绪
 
-- [ ] T001 创建 bun workspaces 脚手架：根 `package.json`（workspaces: apps/server, packages/core, packages/cli2api）与 `tsconfig.json`，按 plan.md Project Structure 建目录骨架
+- [ ] T001 创建 bun workspaces 脚手架：根 `package.json`（workspaces: apps/server, packages/core）与 `tsconfig.json`，按 plan.md Project Structure 建目录骨架
 - [ ] T002 [P] 实现 packages/core/src/config.ts：Zod 校验全部环境变量（PORT/ADMIN_TOKEN/DATABASE_URL/DOCLING_URL/EMBEDDING_*/GBRAIN_SERVE_PORT/DATA_DIR/MCP_SURFACE/并发上限），缺失必填项启动即报错；配 tests/unit/config.test.ts
 - [ ] T003 编写 deploy/migrations/0001-init.sql：rag_keys、rag_jobs、_rag_migrations 三表与索引，字段与约束照 data-model.md（CHECK/JSONB/部分索引）
 - [ ] T004 实现 packages/core/src/db.ts：Bun postgres 连接（DATABASE_URL）+ 启动期按序迁移执行器（_rag_migrations 记录，幂等）
-- [ ] T005 [P] 提炼 packages/cli2api：自 ~/workspace/gbrain-services/cli2api 迁入 src/{registry,runner,argv}.ts 与 clis/gbrain.yaml；runner 的 binary 解析改为镜像内 `/usr/local/bin/gbrain`（去除 docker wrapper 依赖）；registry 增加 `x-cli.jsonArg` 字段解析
+- [ ] T005 [P] 引入 cli2api git 依赖：根 `package.json` 添加 `github.com/kenny8zeng/cli2api`（锁定 tag）并验证 `import { registry/runner }` 可用；落地 `deploy/clis/gbrain.yaml`（自上游 gen-gbrain-spec 生成物调整 binary=/usr/local/bin/gbrain，其余不改，保持可随上游重生成）
 - [ ] T006 [P] 编写 deploy/Dockerfile（多阶段：bun 应用构建层；gbrain 源码层 `git clone --depth 1 --branch v0.47.6.0 https://github.com/garrytan/gbrain.git && bun install && bun run build` 产出 bin/gbrain 拷入运行层，并以 `gbrain serve --http` 冒烟判定是否需补 build:admin-embedded，见 research D1）、deploy/compose.yaml（gbrain-rag + postgres:16-pgvector + volumes）、deploy/entrypoint.sh（`gbrain init --url $DATABASE_URL` 幂等 → exec server）、deploy/.env.example
 - [ ] T007 Setup 检查点：`docker compose up -d --build` 成功，容器内 `gbrain --version` 输出 0.47.6.0，迁移执行完毕（_rag_migrations 有 0001 记录）
 
@@ -147,8 +147,8 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ### Implementation for User Story 5
 
-- [ ] T037 [US5] 完成 packages/cli2api/src/runner.ts 的 jsonArg 分支（追加 flag/缓冲/解析/502 语义）并在 clis/gbrain.yaml 为 12 条只读状态路由标注 `x-cli.jsonArg`（清单照 contracts/admin-proxy.md）
-- [ ] T038 [US5] 在 apps/server/src/app.ts 以子路由挂载 /v1/admin/gbrain/*（registry 装载 packages/cli2api/clis/gbrain.yaml，binary=/usr/local/bin/gbrain，maxConcurrency 沿用 spec）
+- [ ] T037 [US5] 实现 packages/core/src/admin-proxy.ts：SSE 透传（runner onEvent → SSE 事件）与 format=json 缓冲分支（内置 12 条路由→flag 表，语义照 contracts/admin-proxy.md）；向 cli2api 上游提交改进提案（jsonArg spec 注记 + binary 配置化），合入后迁移上游实现
+- [ ] T038 [US5] 在 apps/server/src/app.ts 以子路由挂载 /v1/admin/gbrain/*（registry 装载 deploy/clis/gbrain.yaml，maxConcurrency 沿用 spec）
 - [ ] T039 [US5] 补 tests/integration/us5-admin-proxy.test.ts 并运行至全绿（SSE 长任务进度 + format=json 双形态 = SC-007）
 
 ---
