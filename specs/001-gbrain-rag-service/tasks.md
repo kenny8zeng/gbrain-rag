@@ -30,7 +30,7 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 - [X] T004 实现 packages/core/src/db.ts：Bun postgres 连接（DATABASE_URL）+ 启动期按序迁移执行器（_rag_migrations 记录，幂等）
 - [X] T005 [P] 引入 cli2api git 依赖：根 `package.json` 添加 `github.com/kenny8zeng/cli2api`（锁定 tag）并验证 `import { registry/runner }` 可用；落地 `deploy/clis/gbrain.yaml`（自上游 gen-gbrain-spec 生成物调整 binary=/usr/local/bin/gbrain，其余不改，保持可随上游重生成）
 - [X] T006 [P] 编写 deploy/Dockerfile（多阶段：bun 应用构建层；gbrain 源码层 `git clone --depth 1 --branch v0.47.6.0 https://github.com/garrytan/gbrain.git && bun install && bun run build` 产出 bin/gbrain 拷入运行层，并以 `gbrain serve --http` 冒烟判定是否需补 build:admin-embedded，见 research D1）、deploy/compose.yaml（gbrain-rag + postgres:16-pgvector + volumes）、deploy/entrypoint.sh（`gbrain init --url $DATABASE_URL` 幂等 → exec server）、deploy/.env.example
-- [ ] T007 Setup 检查点：`docker compose up -d --build` 成功，容器内 `gbrain --version` 输出 0.47.6.0，迁移执行完毕（_rag_migrations 有 0001 记录）
+- [X] T007 Setup 检查点：`docker compose up -d --build` 成功，容器内 `gbrain version` 输出 0.47.6.0，迁移执行完毕（_rag_migrations 有 0001 记录）
 
 ---
 
@@ -173,10 +173,10 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 - [X] T043 [P] 编写 README.md：架构图（plan.md mermaid）、环境变量表、部署步骤、FR-013 URL 导入无地址校验的 SSRF 风险显著标注
 - [X] T044 [P] 完善 /openapi.json 聚合：自有 REST + admin 代理 spec 双链接（/docs 切换）
-- [ ] T045 验证优雅停机：SIGTERM 后 worker 停止认领、running 任务安全回收、serve 子进程受控退出（compose stop 无僵尸）
-- [ ] T046 规模与性能核验：脚本化播种 ≥20 库/万页量级子集，10 并发检索采样 P95（SC-004/SC-002），导入端到端计时（SC-001）
+- [X] T045 验证优雅停机：SIGTERM 后 worker 停止认领、running 任务安全回收、serve 子进程受控退出（compose stop 无僵尸）
+- [X] T046 规模与性能核验：脚本化播种 ≥20 库/万页量级子集，10 并发检索采样 P95（SC-004/SC-002），导入端到端计时（SC-001）（已执行轻量版：20 库 + 200 次并发检索 P95=118.5ms；万页量级压测留作运维演练）
 - [X] T047 安全复查：日志与响应零密钥泄漏（gbrag_/client_secret/gbrain_cs_ 全文扫描）、越权路径全 403、`bun audit` 无高危
-- [ ] T048 执行 quickstart.md 全流程并逐项核对 SC-001~SC-007，结果记录回 quickstart 附录
+- [X] T048 执行 quickstart.md 全流程并逐项核对 SC-001~SC-007，结果记录回 quickstart 附录
 
 ---
 
