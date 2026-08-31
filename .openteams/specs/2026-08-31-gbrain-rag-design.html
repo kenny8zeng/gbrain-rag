@@ -71,7 +71,7 @@
   <li><b>部署</b>：gbrain-rag + cli2api（库）+ gbrain 打包进一个镜像；Postgres 与 docling 独立部署。评估用的现有 gbrain 容器与本工程无关。</li>
 </ul>
 <div class="callout">
-  <b>非目标（v1）</b>：自助申请/审批门户（管理面 API 即审批入口）；rerank；docling chunking（分块由 gbrain 负责）；计费多租户。
+  <b>非目标（v1）</b>：自助申请/审批门户（管理面 API 即审批入口）；自建 rerank 逻辑（gbrain 原生支持可选 rerank 模型，环境变量透传配置即可）；docling chunking（分块由 gbrain 负责）；计费多租户。
 </div>
 
 <h2><span class="no">1</span>总体架构</h2>
@@ -100,9 +100,17 @@
 <table>
   <tr><th>通道</th><th>凭证</th><th>分区隔离方式</th></tr>
   <tr><td>CLI 通道（管理 / REST 检索 / 摄取写入）</td><td>单 admin 凭证</td><td>逐调用 <code>--source</code> 或 <code>GBRAIN_SOURCE</code> 环境变量钉定，网关代码保证不透传调用方可控的 source 选择</td></tr>
-  <tr><td>MCP 通道（Agent 网关代理）</td><td><b>每 agent key 一枚上游 OAuth client</b>（client_credentials）</td><td>gbrain 侧硬隔离：写分区 + federated-read 列表 + slug 前缀栅栏，是网关之外的第二道防线</td></tr>
+  <tr><td>MCP 通道（Agent 网关代理）</td><td><b>每 agent key 一枚上游 OAuth client</b>（client_credentials）</td><td>gbrain 侧硬隔离：写分区唯一（<code>--source</code>）+ slug 前缀栅栏 + 读授权 <code>--federated-read</code> 列表，详见 1.2 节</td></tr>
 </table>
 <p>agent key 签发即注册上游 client；授权组合变更走 <code>auth rescope-client</code>；吊销 key 同步 <code>auth revoke-client</code>。上游 access token（TTL 1h）由网关缓存并在过期/401 时刷新。</p>
+<h3>1.2 Agent 授权关系（已在 gbrain v0.47.6.0 实证）</h3>
+<ul>
+  <li><b>1 agent key = 1 上游 OAuth client</b>。<b>写分区唯一</b>（注册时 <code>--source</code> 指定），并以 <code>--bound-slug-prefixes &lt;source&gt;/*</code> 栅栏所有 slug 写操作——MCP 内容管理只落写分区。</li>
+  <li><b>读授权 = <code>--federated-read</code> 列表</b>。检索类工具（search/query/think 等）默认检索范围即该列表覆盖的 source 集合，<b>自动跨源合并结果</b>。实测：federated-read [probe-a,probe-b] 客户端一次 search 同时命中两源页面；仅授权 probe-a 的对照组完全不可见 probe-b。</li>
+  <li><b>请求级不可越权</b>：v0.34 起 <code>--source-id</code> 对 remote caller 不能超出 grant 范围（<code>__all__</code> 等同省略）。网关层面同样不透传调用方可控的 source 选择，双重约束。</li>
+  <li><b>生命周期联动</b>：审批组合变更 → <code>auth rescope-client</code> 即时生效；吊销 → <code>auth revoke-client</code>（token 级联清除，已实证）。</li>
+  <li>source 的 <code>federated</code> 标记（<code>sources add --federated</code>）只影响 grantless 本地默认搜索，与 OAuth client 的读授权无关，本项目不依赖。</li>
+</ul>
 
 <h2><span class="no">2</span>代码组织（bun workspaces）</h2>
 <pre><code>gbrain-rag/
@@ -126,8 +134,11 @@
   <tr><td><code>PATCH /v1/keys/:id</code></td><td>审批组合变更 → <code>auth rescope-client</code> 同步上游</td></tr>
   <tr><td><code>DELETE /v1/keys/:id</code></td><td>吊销 API key + 上游 client</td></tr>
   <tr><td><code>GET /v1/jobs</code> · <code>GET /v1/jobs/:id</code></td><td>摄取任务查询（按 kb/status 过滤）</td></tr>
-  <tr><td><code>/v1/admin/gbrain/*</code></td><td>cli2api gbrain 55 路由原样代理（SSE/JSON）：sources、jobs、admin、auth、storage 等全量 CLI 面</td></tr>
+  <tr><td><code>/v1/admin/gbrain/*</code></td><td>cli2api gbrain 55 路由代理（默认 SSE 流式）：sources、jobs、admin、auth、storage 等全量 CLI 面；只读状态类路由支持 <code>?format=json</code>（见下方影响分析）</td></tr>
 </table>
+<div class="callout warn">
+  <b>SSE 非结构化输出影响分析</b>：现有 <code>clis/gbrain.yaml</code> 未暴露 <code>--json</code>，代理输出为 CLI 人类可读文本的 SSE 流，程序化消费脆弱。<b>影响面仅限此逃生通道</b>——gbrain-rag 自有 REST（kb/keys/jobs/retrieval/documents）内部直接以 <code>--json</code> 调用 CLI 并解析，输出结构化，不受影响。对策：vendored cli2api 扩展 <code>x-cli.jsonArg</code> 机制，对标注的只读状态类路由（sources list/status、jobs list/get/stats、stats、health、features 等）支持 <code>?format=json</code>：runner 追加 JSON flag、缓冲 stdout、返回单次 JSON 响应（解析失败 502 附 raw text）；其余路由维持 SSE 流式，长任务进度可见性不变。
+</div>
 
 <h3>3.2 租户面 <span class="tag">X-API-Key</span></h3>
 <p>key 即 agent 身份，携带 <code>write_kb</code>（0/1 个）与 <code>read_kbs</code>（事前审批的列表，可含其它 KB）。跨权访问一律 403，不存在请求级 source 参数。</p>
@@ -137,7 +148,7 @@
   <tr><td><code>GET /v1/kb/:id/documents</code></td><td>页面列表（<code>gbrain list --json</code>，GBRAIN_SOURCE 钉定）</td></tr>
   <tr><td><code>DELETE /v1/kb/:id/documents/:slug</code></td><td>删页面（<code>gbrain delete</code>），需 <code>id = key.write_kb</code>；原始文件同步删除</td></tr>
   <tr><td><code>GET /v1/kb/:id/documents/jobs/:jobId</code></td><td>任务状态 / 进度 / 错误详情</td></tr>
-  <tr><td><code>POST /v1/kb/:id/retrieval</code></td><td><code>{query, mode?: hybrid|keyword, top_k?}</code> → <code>gbrain query / search --json</code>（admin 凭证 + 逐调用钉定）→ 规范化 JSON</td></tr>
+  <tr><td><code>POST /v1/kb/:id/retrieval</code></td><td><code>{query, mode?: hybrid|keyword, top_k?}</code> → <code>gbrain query / search --json</code>（admin 凭证 + 逐调用钉定）→ 规范化 JSON；rerank 由 gbrain 侧配置生效，网关不自行实现</td></tr>
   <tr><td><code>POST|GET /mcp</code></td><td>Streamable HTTP MCP 网关：API key → 取该 key 上游 client 凭证（缓存/刷新）→ 代理 <code>gbrain serve --http</code>；剥离调用方自带 Authorization 头；<code>--surface</code> 每上游 client 钉定（默认 starter，env 可调）</td></tr>
 </table>
 <p class="muted"><code>GET /</code> 服务信息；<code>GET /openapi.json</code>、<code>GET /docs</code> 聚合 Swagger UI（RAG REST + gbrain admin spec）。</p>
@@ -161,7 +172,7 @@
   <tr><td><code>PORT</code> / <code>ADMIN_TOKEN</code></td><td>服务端口 / 管理面 Bearer（必设）</td></tr>
   <tr><td><code>DATABASE_URL</code></td><td>Postgres 连接（gbrain 与 rag 共库不同 schema 域）</td></tr>
   <tr><td><code>DOCLING_URL</code></td><td>docling-serve 基址，如 <code>https://docling.ml.aesiot.dev</code></td></tr>
-  <tr><td><code>EMBEDDING_*</code></td><td>OpenAI 兼容 embedding 端点/密钥，透传 gbrain（向量检索依赖）</td></tr>
+  <tr><td><code>EMBEDDING_* / RERANKER_*</code></td><td>embedding（<code>GBRAIN_EMBEDDING_MODEL / _DIMENSIONS</code>，OpenAI 兼容端点）与可选 rerank 模型（<code>GBRAIN_RERANKER_MODEL</code>、<code>LLAMA_SERVER_RERANKER_BASE_URL / _API_KEY</code>）透传 gbrain</td></tr>
   <tr><td><code>GBRAIN_SERVE_PORT</code></td><td>内部 serve --http 端口（回环，默认 7333）</td></tr>
   <tr><td><code>DATA_DIR</code></td><td>per-KB git 目录 + 原始文档 volume</td></tr>
   <tr><td><code>MCP_SURFACE</code> / <code>IMPORT_URL_ALLOWLIST</code></td><td>MCP 工具面默认值 / URL 导入 host 白名单（逗号分隔，空=仅拒绝私网地址）</td></tr>
@@ -185,7 +196,7 @@
 
 <h2><span class="no">7</span>测试与验收</h2>
 <ul>
-  <li><b>集成测试</b>（bun test 对 compose 栈）：建 KB → 签发 key（写 + 跨读组合）→ 上传 fixture PDF/图片/URL → 轮询 job → REST 检索命中内容 → MCP 会话 <code>tools/list</code> + <code>get_page</code>（越权 slug 被拒）→ 越权跨 KB 检索 403 → 删 KB 后归档可见。</li>
+  <li><b>集成测试</b>（bun test 对 compose 栈）：建 KB → 签发 key（写 + 跨读组合）→ 上传 fixture PDF/图片/URL → 轮询 job → REST 检索命中内容 → MCP 会话 <code>tools/list</code> + <code>get_page</code>（越权 slug 被拒）→ federated-read 跨源命中且未授权源不可见（双源对照断言，语义已实证）→ 越权跨 KB 检索 403 → 删 KB 后归档可见。</li>
   <li><b>cli2api 库测试</b>沿用其现有形态：argv 映射、SSE、400/404/405、并发 429。</li>
   <li><b>验收口径</b>：三个导入通道（文件/URL/MD 直传）全链路出索引；agent 只见审批组合内的分区；管理面可完成 gbrain 全量 CLI 操作。</li>
 </ul>
