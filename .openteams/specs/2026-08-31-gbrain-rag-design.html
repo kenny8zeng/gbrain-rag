@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gbrain-rag 设计文档 — GBrain 核心 RAG 知识库服务</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #1d2130; --border: #2a2f42;
+    --text: #e2e6f0; --muted: #8b93a7; --accent: #6ea8fe; --accent2: #7ee2b8;
+    --warn: #f0b45c; --danger: #ef7a7a; --code-bg: #12151d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.75 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 28px 80px; }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 32px; }
+  h1 { font-size: 26px; margin: 0 0 8px; letter-spacing: .5px; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .meta b { color: var(--accent2); font-weight: 600; }
+  h2 { font-size: 20px; margin: 44px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h2 .no { color: var(--accent); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  h3 { font-size: 16px; margin: 24px 0 8px; color: var(--accent); }
+  p, li { color: var(--text); }
+  .muted { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); color: var(--accent2); font-weight: 600; white-space: nowrap; }
+  tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+  code { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+         font-size: 12.5px; background: var(--code-bg); border: 1px solid var(--border);
+         border-radius: 4px; padding: 1px 6px; color: #c8d6f5; word-break: break-all; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+        padding: 14px 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+  pre code { background: none; border: none; padding: 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+          padding: 16px 20px; margin: 14px 0; }
+  .callout { border-left: 3px solid var(--accent); background: var(--panel);
+             border-radius: 0 10px 10px 0; padding: 12px 18px; margin: 14px 0; }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.danger { border-left-color: var(--danger); }
+  .tag { display: inline-block; font-size: 11.5px; border-radius: 20px; padding: 1px 10px;
+         margin-right: 6px; vertical-align: 2px; border: 1px solid var(--border); color: var(--muted); }
+  .tag.ok { color: var(--accent2); border-color: var(--accent2); }
+  .tag.new { color: var(--accent); border-color: var(--accent); }
+  .tag.risk { color: var(--warn); border-color: var(--warn); }
+  .mermaid-frame { background: #fff; border-radius: 10px; padding: 8px; margin: 14px 0; }
+  ul { padding-left: 22px; } li { margin: 4px 0; }
+  .kbd { color: var(--accent2); }
+  footer { margin-top: 60px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>gbrain-rag 设计文档</h1>
+  <div class="meta">
+    日期 <b>2026-08-31</b> ｜ 状态 <b>待评审</b> ｜ 技术栈 <b>Bun + TypeScript</b> ｜
+    相关 <b>gbrain v0.47.6.0 · cli2api · docling-serve v1.30.0</b>
+  </div>
+</header>
+
+<h2><span class="no">0</span>背景与目标</h2>
+<p>以 GBrain 为知识库核心构建 RAG 知识库服务，统一暴露所有对外接口：</p>
+<ul>
+  <li><b>知识分区（KB）</b>映射 gbrain <code>source</code>；API 驱动自动供给（建分区、发凭证）。</li>
+  <li><b>AI Agent</b> 经本服务 MCP 网关完成单写分区的内容管理与<b>跨分区检索</b>（组合事前审批）。</li>
+  <li><b>管理面</b>集成 cli2api（作为库）：gbrain CLI 全量操作 → REST。</li>
+  <li><b>文档摄取</b>：PDF/Office/图片/网页 URL → docling 转 MD → gbrain 页面 → 建索引。</li>
+  <li><b>部署</b>：gbrain-rag + cli2api（库）+ gbrain 打包进一个镜像；Postgres 与 docling 独立部署。评估用的现有 gbrain 容器与本工程无关。</li>
+</ul>
+<div class="callout">
+  <b>非目标（v1）</b>：自助申请/审批门户（管理面 API 即审批入口）；rerank；docling chunking（分块由 gbrain 负责）；计费多租户。
+</div>
+
+<h2><span class="no">1</span>总体架构</h2>
+<p>单镜像内 <b>单 Bun 进程</b>（API + MCP 网关 + 摄取 worker），<code>gbrain serve --http</code> 为受监督子进程（仅监听容器回环）。</p>
+<div class="mermaid-frame">
+<pre><code>flowchart LR
+    subgraph container[gbrain-rag 镜像：单进程 + 子进程]
+        GW[Bun API 进程：Hono 统一路由] -- spawn + GBRAIN_SOURCE 钉定 --> CLI[gbrain CLI]
+        GW --> MCPX[MCP 网关 /mcp]
+        GW --> W[摄取 worker：Postgres 任务表]
+        MCPX -- per-agent Bearer --> GB[gbrain serve --http 子进程 :7333]
+    end
+    GW --> PG[(Postgres+pgvector：brain 数据 + rag_jobs/rag_keys)]
+    GW -- 管理面 REST --> CLI2[cli2api core 库：55 路由]
+    W -- POST /v1/convert/* --> DL[docling-serve 独立部署]
+    Agent[AI Agent] -- API Key --> MCPX
+    App[应用] -- API Key --> GW
+    Admin[管理员] -- Bearer --> GW</code></pre>
+</div>
+
+<h3>1.1 上游凭证模型（关键决策）</h3>
+<div class="callout warn">
+  gbrain 的分区隔离绑定在<b>凭证</b>上而非请求参数上（<code>auth register-client --source / --federated-read / --bound-slug-prefixes / --surface</code>）。共享上游连接无法按请求钉定 source，单凭证代理 MCP 会跨分区泄数据。
+</div>
+<p>因此采用<b>双通道凭证</b>：</p>
+<table>
+  <tr><th>通道</th><th>凭证</th><th>分区隔离方式</th></tr>
+  <tr><td>CLI 通道（管理 / REST 检索 / 摄取写入）</td><td>单 admin 凭证</td><td>逐调用 <code>--source</code> 或 <code>GBRAIN_SOURCE</code> 环境变量钉定，网关代码保证不透传调用方可控的 source 选择</td></tr>
+  <tr><td>MCP 通道（Agent 网关代理）</td><td><b>每 agent key 一枚上游 OAuth client</b>（client_credentials）</td><td>gbrain 侧硬隔离：写分区 + federated-read 列表 + slug 前缀栅栏，是网关之外的第二道防线</td></tr>
+</table>
+<p>agent key 签发即注册上游 client；授权组合变更走 <code>auth rescope-client</code>；吊销 key 同步 <code>auth revoke-client</code>。上游 access token（TTL 1h）由网关缓存并在过期/401 时刷新。</p>
+
+<h2><span class="no">2</span>代码组织（bun workspaces）</h2>
+<pre><code>gbrain-rag/
+  apps/server/          # 入口：Hono app、supervisor（拉起 gbrain serve --http）、worker loop
+  packages/core/        # 领域模块：kb、documents(摄取)、retrieval、auth(keys/clients)、jobs、config
+  packages/cli2api/     # 自 ~/workspace/gbrain-services/cli2api 提炼：registry/runner/argv + clis/gbrain.yaml
+  deploy/
+    Dockerfile          # oven/bun 基底 + gbrain CLI（npm 全局安装或 COPY --from=kenny8zeng/gbrain，实现期定）
+    docker-compose.yml  # gbrain-rag + postgres:16(pgvector)；docling 走 DOCLING_URL
+    entrypoint.sh       # 幂等初始化：gbrain init --prefer-postgres → 启动 server（server 负责拉起 serve 子进程）</code></pre>
+
+<h2><span class="no">3</span>统一路由（单端口，默认 3000）</h2>
+
+<h3>3.1 管理面 <span class="tag">Bearer ADMIN_TOKEN</span></h3>
+<table>
+  <tr><th>路由</th><th>行为</th></tr>
+  <tr><td><code>POST /v1/kb</code></td><td>建知识库：建 <code>DATA_DIR/brains/&lt;kbId&gt;/</code>（git init + 首提交）→ <code>sources add kb-&lt;id&gt; --path &lt;dir&gt;</code></td></tr>
+  <tr><td><code>GET /v1/kb</code> · <code>GET /v1/kb/:id</code></td><td><code>sources list / status</code> 映射（页数、embed 覆盖、陈旧度）</td></tr>
+  <tr><td><code>DELETE /v1/kb/:id</code></td><td><code>sources archive</code>（72h 保留期）；联动吊销引用它的 agent key 上游 client。物理清除 <code>purge</code> 单独接口</td></tr>
+  <tr><td><code>POST /v1/keys</code></td><td>签发 agent key：<code>{label, write_kb?, read_kbs[]}</code> → 按组合注册上游 OAuth client（写分区 <code>--bound-slug-prefixes</code> 栅栏；纯读 <code>--scopes read</code>）→ 返回明文 API key（仅此一次，库存哈希）</td></tr>
+  <tr><td><code>PATCH /v1/keys/:id</code></td><td>审批组合变更 → <code>auth rescope-client</code> 同步上游</td></tr>
+  <tr><td><code>DELETE /v1/keys/:id</code></td><td>吊销 API key + 上游 client</td></tr>
+  <tr><td><code>GET /v1/jobs</code> · <code>GET /v1/jobs/:id</code></td><td>摄取任务查询（按 kb/status 过滤）</td></tr>
+  <tr><td><code>/v1/admin/gbrain/*</code></td><td>cli2api gbrain 55 路由原样代理（SSE/JSON）：sources、jobs、admin、auth、storage 等全量 CLI 面</td></tr>
+</table>
+
+<h3>3.2 租户面 <span class="tag">X-API-Key</span></h3>
+<p>key 即 agent 身份，携带 <code>write_kb</code>（0/1 个）与 <code>read_kbs</code>（事前审批的列表，可含其它 KB）。跨权访问一律 403，不存在请求级 source 参数。</p>
+<table>
+  <tr><th>路由</th><th>行为</th></tr>
+  <tr><td><code>POST /v1/kb/:id/documents</code></td><td>导入：<code>multipart 文件</code>（文档/图片，docling 转 MD）| <code>{url}</code>（网页抓取转换）| <code>text/markdown</code> 直传（跳过 docling）。导入是写操作，校验 <code>id = key.write_kb</code>；建 job → <code>202 {job_id}</code></td></tr>
+  <tr><td><code>GET /v1/kb/:id/documents</code></td><td>页面列表（<code>gbrain list --json</code>，GBRAIN_SOURCE 钉定）</td></tr>
+  <tr><td><code>DELETE /v1/kb/:id/documents/:slug</code></td><td>删页面（<code>gbrain delete</code>），需 <code>id = key.write_kb</code>；原始文件同步删除</td></tr>
+  <tr><td><code>GET /v1/kb/:id/documents/jobs/:jobId</code></td><td>任务状态 / 进度 / 错误详情</td></tr>
+  <tr><td><code>POST /v1/kb/:id/retrieval</code></td><td><code>{query, mode?: hybrid|keyword, top_k?}</code> → <code>gbrain query / search --json</code>（admin 凭证 + 逐调用钉定）→ 规范化 JSON</td></tr>
+  <tr><td><code>POST|GET /mcp</code></td><td>Streamable HTTP MCP 网关：API key → 取该 key 上游 client 凭证（缓存/刷新）→ 代理 <code>gbrain serve --http</code>；剥离调用方自带 Authorization 头；<code>--surface</code> 每上游 client 钉定（默认 starter，env 可调）</td></tr>
+</table>
+<p class="muted"><code>GET /</code> 服务信息；<code>GET /openapi.json</code>、<code>GET /docs</code> 聚合 Swagger UI（RAG REST + gbrain admin spec）。</p>
+
+<h2><span class="no">4</span>摄取管道（异步 worker）</h2>
+<p>自建 <code>rag_jobs</code> 表驱动（不兼容 gbrain Minions：其内置 job 类型无法承载自定义 docling 任务）。单进程内 worker loop 轮询认领，<code>UPDATE ... WHERE status='queued'</code> 原子认领，进程重启后 running 超时任务回收重跑。</p>
+<table>
+  <tr><th>步骤</th><th>动作</th><th>失败处理</th></tr>
+  <tr><td>1 取件</td><td>文件：multipart 已落盘 <code>DATA_DIR/incoming/</code>；URL：网关预校验 scheme/host 白名单后原样登记</td><td>登记即校验，4xx 直接 400</td></tr>
+  <tr><td>2 转换</td><td>文件/图片 → docling <code>POST /v1/convert/file</code>；URL → <code>POST /v1/convert/source</code>；<code>md</code> 直传类型跳过本步与步骤 3。worker 内异步等待（timeout 600s）；docling 自带并发管理，不用其 async/poll 端点</td><td>4xx/5xx → job failed 带原因；重试 3 次指数退避</td></tr>
+  <tr><td>3 规范化</td><td>frontmatter 注入 <code>title / kb / source_file|source_url / converted_at</code></td><td>—</td></tr>
+  <tr><td>4 写入</td><td>原始文件移入 <code>DATA_DIR/docs/&lt;source-id&gt;/&lt;slug&gt;.&lt;ext&gt;</code>；<code>gbrain put &lt;slug&gt;</code>（stdin 传内容；slug=<code>&lt;source-id&gt;/docs/&lt;name&gt;</code>，source-id 即 <code>kb-&lt;id&gt;</code>，与上游 slug 前缀栅栏一致）</td><td>CLI 非零退出 → stderr 透传进 job.error</td></tr>
+  <tr><td>5 索引</td><td><code>gbrain embed &lt;slug&gt;</code>；分块/向量全部交给 gbrain</td><td>embed 失败 job 标 <code>done_with_warnings</code>（关键词检索可用）</td></tr>
+</table>
+<p><b>取舍</b>：1 文档 = 1 页面；gbrain chunker 与检索索引强耦合，外部预分块（docling <code>/v1/chunk</code>）反而破坏元数据一致性，故不用。原始文件存本地 volume 而非 gbrain files storage（CLI 无删除命令，生命周期无法闭环）。</p>
+
+<h2><span class="no">5</span>配置与数据模型</h2>
+<h3>5.1 环境变量</h3>
+<table>
+  <tr><th>变量</th><th>说明</th></tr>
+  <tr><td><code>PORT</code> / <code>ADMIN_TOKEN</code></td><td>服务端口 / 管理面 Bearer（必设）</td></tr>
+  <tr><td><code>DATABASE_URL</code></td><td>Postgres 连接（gbrain 与 rag 共库不同 schema 域）</td></tr>
+  <tr><td><code>DOCLING_URL</code></td><td>docling-serve 基址，如 <code>https://docling.ml.aesiot.dev</code></td></tr>
+  <tr><td><code>EMBEDDING_*</code></td><td>OpenAI 兼容 embedding 端点/密钥，透传 gbrain（向量检索依赖）</td></tr>
+  <tr><td><code>GBRAIN_SERVE_PORT</code></td><td>内部 serve --http 端口（回环，默认 7333）</td></tr>
+  <tr><td><code>DATA_DIR</code></td><td>per-KB git 目录 + 原始文档 volume</td></tr>
+  <tr><td><code>MCP_SURFACE</code> / <code>IMPORT_URL_ALLOWLIST</code></td><td>MCP 工具面默认值 / URL 导入 host 白名单（逗号分隔，空=仅拒绝私网地址）</td></tr>
+</table>
+<p class="muted">注：cli2api 以库嵌入后，其 API_TOKEN 认证由网关 Bearer 中间件统一承担，不单独设 token。</p>
+<h3>5.2 自有表（其余数据归 gbrain schema）</h3>
+<table>
+  <tr><th>表</th><th>字段要点</th></tr>
+  <tr><td><code>rag_keys</code></td><td>id, key_hash, label, write_kb?, read_kbs jsonb, upstream_client_id/secret, surface, created_at, revoked_at?（首版 upstream secret 明文存库，文档标注风险；加密为后续项）</td></tr>
+  <tr><td><code>rag_jobs</code></td><td>id, kb_id, type(file|url|md), source_ref, status(queued|running|done|done_with_warnings|failed), attempts, error?, doc_slug?, created_at/updated_at</td></tr>
+</table>
+<h3>5.3 持久化卷</h3>
+<p>postgres 数据卷、<code>DATA_DIR</code>（<code>brains/&lt;kb&gt;</code> git 目录、<code>docs/&lt;kb&gt;</code> 原始文件、<code>incoming/</code> 暂存）。</p>
+
+<h2><span class="no">6</span>错误处理与可观测性</h2>
+<ul>
+  <li><b>网关上游 401/403</b>：自动刷新 client_credentials token 后重放一次；仍失败 → 502。</li>
+  <li><b>KB 状态</b>：归档 → 410；不存在 → 404；key 权限外 → 403。</li>
+  <li><b>结构化日志</b>：stdout JSON（请求、job 生命周期、上游凭证刷新）；管理面与租户面操作均含 key 标识，满足"流量经网关 + 审计"。限流 v1 仅做 MCP 代理逐 key 并发上限（沿用 cli2api maxConcurrency 模式）。</li>
+</ul>
+
+<h2><span class="no">7</span>测试与验收</h2>
+<ul>
+  <li><b>集成测试</b>（bun test 对 compose 栈）：建 KB → 签发 key（写 + 跨读组合）→ 上传 fixture PDF/图片/URL → 轮询 job → REST 检索命中内容 → MCP 会话 <code>tools/list</code> + <code>get_page</code>（越权 slug 被拒）→ 越权跨 KB 检索 403 → 删 KB 后归档可见。</li>
+  <li><b>cli2api 库测试</b>沿用其现有形态：argv 映射、SSE、400/404/405、并发 429。</li>
+  <li><b>验收口径</b>：三个导入通道（文件/URL/MD 直传）全链路出索引；agent 只见审批组合内的分区；管理面可完成 gbrain 全量 CLI 操作。</li>
+</ul>
+
+<h2><span class="no">8</span>风险与实现期待定项</h2>
+<table>
+  <tr><th>项</th><th>说明</th><th>处置</th></tr>
+  <tr><td><span class="tag risk">待验证</span> 镜像内 gbrain 安装</td><td>npm 全局包 vs <code>COPY --from=kenny8zeng/gbrain</code></td><td>实现期第一步验证，选可复现者</td></tr>
+  <tr><td><span class="tag risk">依赖方</span> 图片导入质量</td><td>取决于 docling 端 VLM/OCR 管线配置</td><td>网关仅透传；与 docling 方确认实例配置</td></tr>
+  <tr><td><span class="tag risk">风险</span> upstream secret 明文</td><td>rag_keys 存 client secret</td><td>首版明文 + 卷权限收敛；后续加 DATA_ENCRYPTION_KEY</td></tr>
+  <tr><td><span class="tag">已知</span> 72h 归档窗口</td><td>gbrain sources 软删除保留期</td><td>purge 为显式管理接口</td></tr>
+</table>
+
+<footer>gbrain-rag design spec · 2026-08-31 · 由 brainstorming 流程产出，评审通过后进入实现计划</footer>
+</div>
+</body>
+</html>
