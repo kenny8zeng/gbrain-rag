@@ -64,22 +64,32 @@ gated("contract: kb/keys", () => {
     expect(cj.key).toMatch(/^gbrag_[0-9a-f]{32}$/);
 
     const list = await (await fetch(`${BASE}/v1/keys`, { headers: adminHeaders() })).json();
-    expect(JSON.stringify(list)).not.toContain("gbrag_");
-    expect(JSON.stringify(list)).not.toContain(cj.key);
+    const listStr = JSON.stringify(list);
+    expect(listStr).not.toMatch(/gbrag_[0-9a-f]{32}/); // 完整明文 key 不出现
+    expect(listStr).not.toContain(cj.key);
+    expect(listStr).not.toContain("key_hash");
     expect(list[0].key_prefix).toBeDefined();
   });
 
   test("重复 label → 409", async () => {
+    const kb = await (
+      await fetch(`${BASE}/v1/kb`, {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ name: `contract-dup-${Date.now()}` }),
+      })
+    ).json();
     const label = `dup-${Date.now()}`;
-    await fetch(`${BASE}/v1/keys`, {
+    const first = await fetch(`${BASE}/v1/keys`, {
       method: "POST",
       headers: adminHeaders(),
-      body: JSON.stringify({ label, read_kbs: ["kb-00000000"] }),
+      body: JSON.stringify({ label, read_kbs: [kb.id] }),
     });
+    expect(first.status).toBe(201);
     const again = await fetch(`${BASE}/v1/keys`, {
       method: "POST",
       headers: adminHeaders(),
-      body: JSON.stringify({ label, read_kbs: ["kb-00000000"] }),
+      body: JSON.stringify({ label, read_kbs: [kb.id] }),
     });
     expect(again.status).toBe(409);
   });
@@ -87,13 +97,13 @@ gated("contract: kb/keys", () => {
 
 gated("contract: admin proxy", () => {
   test("format=json 结构化输出", async () => {
-    const r = await fetch(`${BASE}/v1/admin/gbrain/engine/status?format=json`, { headers: adminHeaders() });
+    const r = await fetch(`${BASE}/v1/admin/gbrain/sources/list?format=json`, { headers: adminHeaders() });
     expect(r.status).toBe(200);
     expect(r.headers.get("content-type")).toContain("application/json");
     await r.json(); // 可解析
   });
   test("非 JSON 路由带 format=json → 400", async () => {
-    const r = await fetch(`${BASE}/v1/admin/gbrain/get/some-slug?format=json`, { headers: adminHeaders() });
+    const r = await fetch(`${BASE}/v1/admin/gbrain/sources/add/test-id?format=json`, { method: "PUT", headers: adminHeaders() });
     expect([200, 400, 404]).toContain(r.status); // 路由存在与否版本相关；400 时必须为 FORMAT_NOT_SUPPORTED
     if (r.status === 400) {
       const j = await r.json();

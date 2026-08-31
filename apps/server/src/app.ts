@@ -117,6 +117,9 @@ export function createApp(svc: Services): Hono<Env> {
   registerJobsAdminRoutes(app, svc, admin);
 
   // 引擎运维代理：/v1/admin/gbrain/*（cli2api spec 驱动，SSE 默认 / format=json 扩展）
+  // cli2api 原始 OpenAPI spec（供 Swagger 等工具消费）
+  app.get("/v1/admin/openapi/gbrain.json", admin, (c) => c.json(svc.adminProxy.spec.doc));
+
   app.all("/v1/admin/gbrain/*", admin, (c) =>
     handleAdminRequest(svc.adminProxy, c.req.raw, "/v1/admin/gbrain"),
   );

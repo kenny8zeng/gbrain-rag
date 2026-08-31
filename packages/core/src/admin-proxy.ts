@@ -57,6 +57,9 @@ export async function handleAdminRequest(proxy: AdminProxy, req: Request, mountP
 
   const wantJson = url.searchParams.get("format") === "json";
   const jsonFlag = JSON_ROUTES[`${method}|${route.argvPrefix.join(".")}`];
+  if (wantJson && !jsonFlag) {
+    return jsonErr(400, "FORMAT_NOT_SUPPORTED", `route ${method.toUpperCase()} ${subPath} does not support format=json`);
+  }
 
   let body: string | undefined;
   if (route.hasBody) {

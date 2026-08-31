@@ -60,15 +60,15 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ### Tests for User Story 1
 
-- [ ] T015 [P] [US1] 编写 tests/contract/kb-keys.test.ts：管理面 401（无/错 token）、POST /v1/kb 201 形状、keys 一次性明文、410 archived、409 KB_IN_USE 契约（contracts/rest-api.md）
-- [ ] T016 [P] [US1] 编写 tests/integration/us1-kb-credentials.test.ts：spec 验收场景 1-5 全链路（对 compose 栈）
+- [X] T015 [P] [US1] 编写 tests/contract/kb-keys.test.ts：管理面 401（无/错 token）、POST /v1/kb 201 形状、keys 一次性明文、410 archived、409 KB_IN_USE 契约（contracts/rest-api.md）
+- [X] T016 [P] [US1] 编写 tests/integration/us1-kb-credentials.test.ts：spec 验收场景 1-5 全链路（对 compose 栈）
 
 ### Implementation for User Story 1
 
-- [ ] T017 [US1] 实现 packages/core/src/kb.ts：createKb（DATA_DIR/brains/<id> git init+首提交 → sources add --path）、listKbs/detailKb（sources list/status --json 映射）、archiveKb（引用凭证预检 → 409 KB_IN_USE，force 联动吊销）、purgeKb；错误映射 404/410
-- [ ] T018 [US1] 实现 packages/core/src/credentials.ts：key 生成（gbrag_+CSPRNG32hex、sha256 存储、8 字符前缀）、issue（register-client 参数装配：--source/--federated-read/--bound-slug-prefixes/--surface/--scopes，纯读 key 用 --scopes read）、rescope（PATCH 即时生效）、revoke（revoke-client + revoked_at）、lookupByKeyHash（T013 接入）
-- [ ] T019 [US1] 实现 apps/server/src/routes/kb.ts 与 routes/keys.ts：POST/GET /v1/kb、GET/DELETE /v1/kb/:id、POST /v1/kb/:id/purge、POST/PATCH/DELETE/GET /v1/keys（requireAdmin；同时完成 requireTenant 的 lookup 接线）
-- [ ] T020 [US1] 运行 T015/T016 测试并修复至全绿（含场景 3 越权 403、场景 4 rescope 即时性、场景 5 吊销 401）
+- [X] T017 [US1] 实现 packages/core/src/kb.ts：createKb（DATA_DIR/brains/<id> git init+首提交 → sources add --path）、listKbs/detailKb（sources list/status --json 映射）、archiveKb（引用凭证预检 → 409 KB_IN_USE，force 联动吊销）、purgeKb；错误映射 404/410
+- [X] T018 [US1] 实现 packages/core/src/credentials.ts：key 生成（gbrag_+CSPRNG32hex、sha256 存储、8 字符前缀）、issue（register-client 参数装配：--source/--federated-read/--bound-slug-prefixes/--surface/--scopes，纯读 key 用 --scopes read）、rescope（PATCH 即时生效）、revoke（revoke-client + revoked_at）、lookupByKeyHash（T013 接入）
+- [X] T019 [US1] 实现 apps/server/src/routes/kb.ts 与 routes/keys.ts：POST/GET /v1/kb、GET/DELETE /v1/kb/:id、POST /v1/kb/:id/purge、POST/PATCH/DELETE/GET /v1/keys（requireAdmin；同时完成 requireTenant 的 lookup 接线）
+- [X] T020 [US1] 运行 T015/T016 测试并修复至全绿（含场景 3 越权 403、场景 4 rescope 即时性、场景 5 吊销 401）
 
 **Checkpoint**: MVP 达成——建库/授权/吊销全链路可用，独立验收通过
 
@@ -82,16 +82,16 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ### Tests for User Story 2
 
-- [ ] T021 [P] [US2] 编写 tests/contract/documents.test.ts：三态输入 202、只读凭证 403（FR：导入需写分区）、413 超 100MB、400 不支持格式（contracts/rest-api.md）
-- [ ] T022 [P] [US2] 编写 tests/integration/us2-ingest.test.ts：PDF/图片/URL/MD 四通道 done、重复导入 outcome=updated（FR-008）、坏 URL 重试 3 次后 failed 带 error（SC-006）
+- [X] T021 [P] [US2] 编写 tests/contract/documents.test.ts：三态输入 202、只读凭证 403（FR：导入需写分区）、413 超 100MB、400 不支持格式（contracts/rest-api.md）
+- [X] T022 [P] [US2] 编写 tests/integration/us2-ingest.test.ts：PDF/图片/URL/MD 四通道 done、重复导入 outcome=updated（FR-008）、坏 URL 重试 3 次后 failed 带 error（SC-006）
 
 ### Implementation for User Story 2
 
-- [ ] T023 [P] [US2] 实现 packages/core/src/ingest/docling.ts：POST /v1/convert/file（multipart files + to_formats=["md"]，600s 超时）与 /v1/convert/source，解析 ConvertDocumentResponse.document.md_content；tests/unit/docling.test.ts（mock fetch 覆盖 200/422/超时）
-- [ ] T024 [US2] 实现 packages/core/src/ingest/pipeline.ts：slug 派生 `<source-id>/docs/<name>`、frontmatter 注入（title/kb/source_file|source_url/converted_at）、`gbrain put --content` upsert（outcome created/updated）、`gbrain embed` 失败降级 done_with_warnings、原始文件归档 DATA_DIR/docs/<source-id>/、失败分类进 rag_jobs.error
-- [ ] T025 [US2] 在 apps/server/src/worker.ts 注册表接入 pipeline handler（T014 的注册点）
-- [ ] T026 [US2] 实现 apps/server/src/routes/documents.ts：POST /v1/kb/:id/documents（multipart/url/markdown 三态 + `id == key.write_kb` 校验）、GET documents/jobs/:jobId、GET documents 列表、DELETE documents/:slug（写分区 + slug 前缀校验 + 档案删除）
-- [ ] T027 [US2] 运行 T021/T022 测试并修复至全绿
+- [X] T023 [P] [US2] 实现 packages/core/src/ingest/docling.ts：POST /v1/convert/file（multipart files + to_formats=["md"]，600s 超时）与 /v1/convert/source，解析 ConvertDocumentResponse.document.md_content；tests/unit/docling.test.ts（mock fetch 覆盖 200/422/超时）
+- [X] T024 [US2] 实现 packages/core/src/ingest/pipeline.ts：slug 派生 `<source-id>/docs/<name>`、frontmatter 注入（title/kb/source_file|source_url/converted_at）、`gbrain put --content` upsert（outcome created/updated）、`gbrain embed` 失败降级 done_with_warnings、原始文件归档 DATA_DIR/docs/<source-id>/、失败分类进 rag_jobs.error
+- [X] T025 [US2] 在 apps/server/src/worker.ts 注册表接入 pipeline handler（T014 的注册点）
+- [X] T026 [US2] 实现 apps/server/src/routes/documents.ts：POST /v1/kb/:id/documents（multipart/url/markdown 三态 + `id == key.write_kb` 校验）、GET documents/jobs/:jobId、GET documents 列表、DELETE documents/:slug（写分区 + slug 前缀校验 + 档案删除）
+- [X] T027 [US2] 运行 T021/T022 测试并修复至全绿
 
 **Checkpoint**: US1+US2 叠加可独立演示"建库→发凭证→导入→查任务"
 
@@ -105,14 +105,14 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ### Tests for User Story 3
 
-- [ ] T028 [P] [US3] 编写 tests/contract/mcp-gateway.test.ts：无 key 401、并发超限 429、调用方 Authorization 头被剥离的断言（contracts/mcp-gateway.md）
-- [ ] T029 [P] [US3] 编写 tests/integration/us3-mcp.test.ts：双源 fixture（经 US2 接口播种 A/B 内容）后断言 contracts/mcp-gateway.md 验证基线 4 条（tools/list、put_page 栅栏、federated 双源命中/单源不可见=SC-003、吊销 401）
+- [X] T028 [P] [US3] 编写 tests/contract/mcp-gateway.test.ts：无 key 401、并发超限 429、调用方 Authorization 头被剥离的断言（contracts/mcp-gateway.md）
+- [X] T029 [P] [US3] 编写 tests/integration/us3-mcp.test.ts：双源 fixture（经 US2 接口播种 A/B 内容）后断言 contracts/mcp-gateway.md 验证基线 4 条（tools/list、put_page 栅栏、federated 双源命中/单源不可见=SC-003、吊销 401）
 
 ### Implementation for User Story 3
 
-- [ ] T030 [US3] 实现 packages/core/src/mcp-gateway.ts：X-API-Key 鉴权 → gbrain-upstream 换 token（缓存/刷新）→ 流式代理（JSON-RPC 与 SSE 双向透传）、per-credential 上游会话映射与失效重建、逐凭证并发计数（429）、头剥离（Authorization/x-gbrain-*）
-- [ ] T031 [US3] 在 apps/server/src/app.ts 挂载 /mcp（POST/GET/DELETE，Streamable HTTP 语义）并接 tools/call 审计日志（凭证 id/工具名/耗时）
-- [ ] T032 [US3] 运行 T028/T029 测试并修复至全绿（SC-003 双源对照必须含否定断言）
+- [X] T030 [US3] 实现 packages/core/src/mcp-gateway.ts：X-API-Key 鉴权 → gbrain-upstream 换 token（缓存/刷新）→ 流式代理（JSON-RPC 与 SSE 双向透传）、per-credential 上游会话映射与失效重建、逐凭证并发计数（429）、头剥离（Authorization/x-gbrain-*）
+- [X] T031 [US3] 在 apps/server/src/app.ts 挂载 /mcp（POST/GET/DELETE，Streamable HTTP 语义）并接 tools/call 审计日志（凭证 id/工具名/耗时）
+- [X] T032 [US3] 运行 T028/T029 测试并修复至全绿（SC-003 双源对照必须含否定断言）
 
 **Checkpoint**: P1 三故事全部独立可用：管理、导入、Agent 接入
 
@@ -126,12 +126,12 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ### Tests for User Story 4
 
-- [ ] T033 [P] [US4] 编写 tests/contract/retrieval.test.ts：hybrid/keyword 参数契约、越权库 403、空 query 422、结果形状（slug/title/snippet/score/source_id）
+- [X] T033 [P] [US4] 编写 tests/contract/retrieval.test.ts：hybrid/keyword 参数契约、越权库 403、空 query 422、结果形状（slug/title/snippet/score/source_id）
 
 ### Implementation for User Story 4
 
-- [ ] T034 [US4] 实现 packages/core/src/retrieval.ts：`gbrain query --json` / `gbrain search --json` 规范化（GBRAIN_SOURCE 钉定经 gbrain-cli.ts）
-- [ ] T035 [US4] 实现 apps/server/src/routes/retrieval.ts（POST /v1/kb/:id/retrieval，授权 id ∈ write_kb ∪ read_kbs）；补 tests/integration/us4-retrieval.test.ts 并运行至全绿（含 P95 ≤ 2s 计时采样 = SC-002）
+- [X] T034 [US4] 实现 packages/core/src/retrieval.ts：`gbrain query --json` / `gbrain search --json` 规范化（GBRAIN_SOURCE 钉定经 gbrain-cli.ts）
+- [X] T035 [US4] 实现 apps/server/src/routes/retrieval.ts（POST /v1/kb/:id/retrieval，授权 id ∈ write_kb ∪ read_kbs）；补 tests/integration/us4-retrieval.test.ts 并运行至全绿（含 P95 ≤ 2s 计时采样 = SC-002）
 
 ---
 
@@ -143,13 +143,13 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ### Tests for User Story 5
 
-- [ ] T036 [P] [US5] 编写 tests/contract/admin-proxy.test.ts：401、SSE 三事件形状（stdout/stderr/exit）、format=json 200 JSON、FORMAT_NOT_SUPPORTED 400（contracts/admin-proxy.md）
+- [X] T036 [P] [US5] 编写 tests/contract/admin-proxy.test.ts：401、SSE 三事件形状（stdout/stderr/exit）、format=json 200 JSON、FORMAT_NOT_SUPPORTED 400（contracts/admin-proxy.md）
 
 ### Implementation for User Story 5
 
-- [ ] T037 [US5] 实现 packages/core/src/admin-proxy.ts：SSE 透传（runner onEvent → SSE 事件）与 format=json 缓冲分支（内置 12 条路由→flag 表，语义照 contracts/admin-proxy.md）；向 cli2api 上游提交改进提案（jsonArg spec 注记 + binary 配置化），合入后迁移上游实现
-- [ ] T038 [US5] 在 apps/server/src/app.ts 以子路由挂载 /v1/admin/gbrain/*（registry 装载 deploy/clis/gbrain.yaml，maxConcurrency 沿用 spec）
-- [ ] T039 [US5] 补 tests/integration/us5-admin-proxy.test.ts 并运行至全绿（SSE 长任务进度 + format=json 双形态 = SC-007）
+- [X] T037 [US5] 实现 packages/core/src/admin-proxy.ts：SSE 透传（runner onEvent → SSE 事件）与 format=json 缓冲分支（内置 12 条路由→flag 表，语义照 contracts/admin-proxy.md）；向 cli2api 上游提交改进提案（jsonArg spec 注记 + binary 配置化），合入后迁移上游实现（PR 由维护者提交，待办）
+- [X] T038 [US5] 在 apps/server/src/app.ts 以子路由挂载 /v1/admin/gbrain/*（registry 装载 deploy/clis/gbrain.yaml，maxConcurrency 沿用 spec）
+- [X] T039 [US5] 补 tests/integration/us5-admin-proxy.test.ts 并运行至全绿（SSE 长任务进度 + format=json 双形态 = SC-007）
 
 ---
 
@@ -161,9 +161,9 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 ### Implementation for User Story 6
 
-- [ ] T040 [US6] 实现 apps/server/src/routes/jobs-admin.ts：GET /v1/jobs?kb_id=&status=（分页）与 GET /v1/jobs/:id（requireAdmin，直查 rag_jobs）
-- [ ] T041 [US6] 结构化日志贯穿：请求 id、凭证 id、job 生命周期迁移、上游 token 刷新、tools/call 审计统一 JSON 行输出（stdout）
-- [ ] T042 [US6] 编写并运行 tests/integration/us6-jobs.test.ts：状态过滤准确性、失败任务 100% 含 error（SC-006）
+- [X] T040 [US6] 实现 apps/server/src/routes/jobs-admin.ts：GET /v1/jobs?kb_id=&status=（分页）与 GET /v1/jobs/:id（requireAdmin，直查 rag_jobs）
+- [X] T041 [US6] 结构化日志贯穿：请求 id、凭证 id、job 生命周期迁移、上游 token 刷新、tools/call 审计统一 JSON 行输出（stdout）
+- [X] T042 [US6] 编写并运行 tests/integration/us6-jobs.test.ts：状态过滤准确性、失败任务 100% 含 error（SC-006）
 
 ---
 
@@ -171,11 +171,11 @@ bun workspaces 单体（plan.md Project Structure）：`apps/server/src/`、`pac
 
 **Purpose**: 跨故事收尾与验收核验
 
-- [ ] T043 [P] 编写 README.md：架构图（plan.md mermaid）、环境变量表、部署步骤、FR-013 URL 导入无地址校验的 SSRF 风险显著标注
-- [ ] T044 [P] 完善 /openapi.json 聚合：自有 REST + admin 代理 spec 双链接（/docs 切换）
+- [X] T043 [P] 编写 README.md：架构图（plan.md mermaid）、环境变量表、部署步骤、FR-013 URL 导入无地址校验的 SSRF 风险显著标注
+- [X] T044 [P] 完善 /openapi.json 聚合：自有 REST + admin 代理 spec 双链接（/docs 切换）
 - [ ] T045 验证优雅停机：SIGTERM 后 worker 停止认领、running 任务安全回收、serve 子进程受控退出（compose stop 无僵尸）
 - [ ] T046 规模与性能核验：脚本化播种 ≥20 库/万页量级子集，10 并发检索采样 P95（SC-004/SC-002），导入端到端计时（SC-001）
-- [ ] T047 安全复查：日志与响应零密钥泄漏（gbrag_/client_secret/gbrain_cs_ 全文扫描）、越权路径全 403、`bun audit` 无高危
+- [X] T047 安全复查：日志与响应零密钥泄漏（gbrag_/client_secret/gbrain_cs_ 全文扫描）、越权路径全 403、`bun audit` 无高危
 - [ ] T048 执行 quickstart.md 全流程并逐项核对 SC-001~SC-007，结果记录回 quickstart 附录
 
 ---

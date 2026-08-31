@@ -21,12 +21,17 @@ FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd -m -u 1000 rag
+    && useradd -m -u 1000 rag \
+    && mkdir -p /data/rag && chown rag:rag /data/rag
 COPY --from=gbrain-builder /src/bin/gbrain /usr/local/bin/gbrain
+COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=app-deps --chown=rag /app /app
+COPY --chown=rag tsconfig.json /app/
 COPY --chown=rag apps/ /app/apps/
 COPY --chown=rag packages/ /app/packages/
-COPY --chown=rag deploy/entrypoint.sh deploy/migrations/ deploy/clis/ /app/deploy/
+COPY --chown=rag deploy/entrypoint.sh /app/deploy/entrypoint.sh
+COPY --chown=rag deploy/migrations/ /app/deploy/migrations/
+COPY --chown=rag deploy/clis/ /app/deploy/clis/
 WORKDIR /app
 ENV NODE_ENV=production \
     DATA_DIR=/data/rag \

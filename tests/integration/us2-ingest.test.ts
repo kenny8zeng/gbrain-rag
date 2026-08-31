@@ -38,7 +38,7 @@ gated("US2+US4: 导入与检索", () => {
     const marker = `zebra-us2-${UNIQUE}`;
     const submit = await fetch(`${BASE}/v1/kb/${kb}/documents`, {
       method: "POST",
-      headers: { "X-API-Key": key, "Content-Type": "text/markdown" },
+      headers: { "X-API-Key": key, "Content-Type": "text/markdown", "X-Slug": "returns-policy" },
       body: `# 退货政策\n${marker} 七日内无理由退货。`,
     });
     expect(submit.status).toBe(202);
@@ -47,7 +47,7 @@ gated("US2+US4: 导入与检索", () => {
     const job = await waitJob(key, kb, jobId);
     expect(["done", "done_with_warnings"]).toContain(String(job.status));
     expect(job.outcome).toBe("created");
-    expect(String(job.doc_slug ?? "")).toContain(`${kb}/docs/`);
+    expect(String(job.doc_slug ?? "")).toBe(`${kb}/docs/returns-policy`);
 
     // REST 检索命中（SC-002 形状）
     const hit = await (
@@ -64,12 +64,13 @@ gated("US2+US4: 导入与检索", () => {
     // 重复导入 → updated（FR-008）
     const resubmit = await fetch(`${BASE}/v1/kb/${kb}/documents`, {
       method: "POST",
-      headers: { "X-API-Key": key, "Content-Type": "text/markdown", "X-Slug": "退货政策" },
+      headers: { "X-API-Key": key, "Content-Type": "text/markdown", "X-Slug": "returns-policy" },
       body: `# 退货政策\n${marker} 修订：十五日。`,
     });
     expect(resubmit.status).toBe(202);
     const job2 = await waitJob(key, kb, (await resubmit.json()).job_id);
-    expect(job2.status).toBe("done");
+    // 未配置 embedding 时写入成功但索引降级为 done_with_warnings（FR-009）
+    expect(["done", "done_with_warnings"]).toContain(String(job2.status));
     expect(job2.outcome).toBe("updated");
 
     async function issueKeyFor(kbId: string): Promise<string> {

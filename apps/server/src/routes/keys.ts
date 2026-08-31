@@ -63,7 +63,11 @@ export function registerKeyRoutes(app: Hono<Env>, svc: Services, admin: AdminMid
       return c.json({ error: { code: "INVALID_PARAMS", message: "invalid patch body" } }, 422);
     }
     try {
-      const row = await rescopeKey(svc.cfg, svc.db, c.req.param("id")!, body.data);
+      const row = await rescopeKey(svc.cfg, svc.db, c.req.param("id")!, {
+        writeKb: body.data.write_kb,
+        readKbs: body.data.read_kbs,
+        concurrency: body.data.concurrency,
+      });
       if (!row) return c.json({ error: { code: "NOT_FOUND", message: "key not found" } }, 404);
       return c.json(sanitize(row));
     } catch (e) {

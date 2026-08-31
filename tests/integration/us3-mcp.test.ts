@@ -75,16 +75,15 @@ gated("US3: MCP 网关隔离（SC-003）", () => {
   test("federated 跨源命中 / 未授权不可见 / 栅栏 / 吊销", async () => {
     const kbA = await createKb(`us3-a-${UNIQUE}`);
     const kbB = await createKb(`us3-b-${UNIQUE}`);
-    const seedKey = await issueKey(`us3-seed-${UNIQUE}`, kbA, [kbA, kbB]);
-
-    // 播种：向 A、B 各导一篇含唯一标记的内容（走 US2 通道）
+    // 播种：逐库签发写键（导入仅限写分区），各导一篇含唯一标记的内容
     for (const [kb, word] of [
       [kbA, "alpha"],
       [kbB, "bravo"],
     ] as const) {
+      const writer = await issueKey(`us3-seed-${UNIQUE}-${kb}`, kb, [kb]);
       const r = await fetch(`${BASE}/v1/kb/${kb}/documents`, {
         method: "POST",
-        headers: { "X-API-Key": seedKey, "Content-Type": "text/markdown" },
+        headers: { "X-API-Key": writer, "Content-Type": "text/markdown" },
         body: `# us3 ${word}\n${MARKER} ${word} 独有内容`,
       });
       expect(r.status).toBe(202);

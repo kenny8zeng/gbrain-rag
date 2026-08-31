@@ -73,6 +73,15 @@ export function buildRescopeArgs(clientId: string, patch: { writeKb?: string; re
   return args;
 }
 
+function parseJsonbArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map(String);
+  if (typeof v === "string") {
+    const parsed = JSON.parse(v);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  }
+  return [];
+}
+
 function rowToKeyRow(r: Record<string, unknown>): KeyRow {
   return {
     id: r.id as string,
@@ -80,7 +89,7 @@ function rowToKeyRow(r: Record<string, unknown>): KeyRow {
     keyPrefix: r.key_prefix as string,
     label: r.label as string,
     writeKb: (r.write_kb as string | null) ?? null,
-    readKbs: r.read_kbs as string[],
+    readKbs: parseJsonbArray(r.read_kbs),
     surface: r.surface as string,
     clientId: (r.client_id as string | null) ?? null,
     clientSecret: (r.client_secret as string | null) ?? null,

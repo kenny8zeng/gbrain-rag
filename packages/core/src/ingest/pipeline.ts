@@ -102,14 +102,29 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
   });
 
   const existed = await pageExists(cfg, job.kbId, slug);
-  await runGbrain(cfg, {
-    args: ["put", slug, "--content", markdown],
-    source: job.kbId,
-    timeoutMs: cfg.JOB_TIMEOUT_MS,
-  });
 
   let status: IngestOutcome["status"] = "done";
   let error: string | undefined;
+  try {
+    await runGbrain(cfg, {
+      args: ["put", slug, "--content", markdown],
+      source: job.kbId,
+      timeoutMs: cfg.JOB_TIMEOUT_MS,
+    });
+  } catch (e) {
+    // gbrain put 会连带 embed：embedding 端点不可达时 CLI 非零退出但页面可能已写入——
+    // 复核存在性：已写入则降级 done_with_warnings（关键词检索可用），否则真失败
+    if (await pageExists(cfg, job.kbId, slug)) {
+      return {
+        status: "done_with_warnings",
+        outcome: existed ? "updated" : "created",
+        docSlug: slug,
+        error: `put partially failed (embed/unreachable?): ${(e as Error).message.slice(0, 300)}`,
+      };
+    }
+    throw e;
+  }
+
   try {
     await runGbrain(cfg, { args: ["embed", slug], source: job.kbId, timeoutMs: cfg.JOB_TIMEOUT_MS });
   } catch (e) {
