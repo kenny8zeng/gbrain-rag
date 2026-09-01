@@ -73,6 +73,18 @@ gated("US2+US4: 导入与检索", () => {
     expect(["done", "done_with_warnings"]).toContain(String(job2.status));
     expect(job2.outcome).toBe("updated");
 
+    // 删除文档 → 204 → 检索不再命中（三段 slug 路径 <kb>/docs/<name>）
+    const del = await fetch(`${BASE}/v1/kb/${kb}/documents/docs/returns-policy`, { method: "DELETE", headers: { "X-API-Key": key } });
+    expect(del.status).toBe(204);
+    const afterDel = await fetch(`${BASE}/v1/kb/${kb}/retrieval`, {
+      method: "POST",
+      headers: { "X-API-Key": key, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "退货政策", mode: "keyword", top_k: 5 }),
+    });
+    const afterDelJson = await afterDel.json();
+    expect(afterDelJson.results.length).toBe(0);
+
+
     async function issueKeyFor(kbId: string): Promise<string> {
       const r = await fetch(`${BASE}/v1/keys`, {
         method: "POST",

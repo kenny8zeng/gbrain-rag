@@ -67,9 +67,9 @@
 {"id": "...", "status": "done", "attempts": 1, "outcome": "updated", "doc_slug": "kb-a1b2c3d4/docs/report-2026", "error": null}
 ```
 
-### GET /v1/kb/:id/documents — 页面列表（`gbrain list --json`；授权同上，只读合法）
+### GET /v1/kb/:id/documents — 页面列表（`gbrain list` 输出按行解析为 {slug,type,date,title}；授权同上，只读合法）
 
-### DELETE /v1/kb/:id/documents/:slug — 删页面（需 `id == key.write_kb` 且 slug 以 `<id>/` 为前缀；`gbrain delete` + 原始档案删除）；204。
+### DELETE /v1/kb/:id/documents/:dir/:name — 删页面（需 `id == key.write_kb`；slug 固定三段 `<id>/<dir>/<name>`，dir 必须为 `docs`；`gbrain delete` + 原始档案删除）；204。
 
 ### POST /v1/kb/:id/retrieval — 检索（授权：id ∈ write_kb ∪ read_kbs）
 

@@ -211,23 +211,30 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
     } catch (e) {
       return kbState(c, e);
     }
-    const j = await runGbrainJson<{ pages?: Array<Record<string, unknown>> }>(svc.cfg, {
+    // gbrain list --json 输出为 tab 分隔文本（slug	type	date	title），非 JSON
+    const r = await runGbrain(svc.cfg, {
       args: ["list", "--limit", "200"],
       source: kbId,
       timeoutMs: 30_000,
     });
-    return c.json({ kb_id: kbId, pages: j.pages ?? [] });
+    const pages = r.stdout
+      .split("\n")
+      .map((line) => line.split("\t"))
+      .filter((cols) => cols.length >= 1 && cols[0]!.trim().length > 0)
+      .map((cols) => ({ slug: cols[0]!.trim(), type: cols[1]?.trim() ?? null, date: cols[2]?.trim() ?? null, title: cols[3]?.trim() ?? null }));
+    return c.json({ kb_id: kbId, pages });
   }));
 
-  // 删除页面（写）
+  // 删除页面（写）。slug 固定三段 <source>/docs/<name>（slugifyName 保证 name 无斜杠），
+  // 故以显式三段路径表达，避免单段 :param 无法匹配嵌套路径
   const del = createRoute({
     method: "delete",
-    path: "/v1/kb/{id}/documents/{slug}",
+    path: "/v1/kb/{id}/documents/{dir}/{name}",
     tags: ["tenant"],
-    summary: "删除页面",
+    summary: "删除页面（slug = <kb>/docs/<name>）",
     middleware: [tenant],
     security: [{ apiKey: [] }],
-    request: { params: z.object({ id: z.string(), slug: z.string() }) },
+    request: { params: z.object({ id: z.string(), dir: z.string(), name: z.string() }) },
     responses: {
       204: { description: "已删除" },
       ...err403(),
@@ -237,13 +244,15 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
   });
   app.openapi(del, libHandler<typeof del>(async (c) => {
     const kbId = c.req.param("id")!;
-    const slug = c.req.param("slug")!;
+    const dir = c.req.param("dir")!;
+    const name = c.req.param("name")!;
+    if (dir !== "docs") {
+      return c.json({ error: { code: "INVALID_PARAMS", message: "slug must be <kb>/docs/<name>" } }, 422);
+    }
+    const slug = `${kbId}/${dir}/${name}`;
     const key = c.get("keyRow");
     if (!canWriteKb(key, kbId)) {
       return c.json({ error: { code: "FORBIDDEN", message: "kb not authorized for this key" } }, 403);
-    }
-    if (!slug.startsWith(`${kbId}/`)) {
-      return c.json({ error: { code: "FORBIDDEN", message: "slug outside partition fence" } }, 403);
     }
     try {
       await ensureKbActive(svc.cfg, kbId);
