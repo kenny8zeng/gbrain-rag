@@ -15,6 +15,16 @@ async function createKb(name: string): Promise<string> {
 }
 
 // 集成例外：等待远端摄取管道的真实终态，只能对平台时钟轮询实际条件（非固定延时猜测）
+async function issueKeyFor(kbId: string): Promise<string> {
+  const r = await fetch(`${BASE}/v1/keys`, {
+    method: "POST",
+    headers: adminHeaders(),
+    body: JSON.stringify({ label: `us2-key-${UNIQUE}-${kbId}`, write_kb: kbId, read_kbs: [kbId] }),
+  });
+  expect(r.status).toBe(201);
+  return (await r.json()).key;
+}
+
 async function waitJob(key: string, kbId: string, jobId: string, timeoutMs = 120_000): Promise<Record<string, unknown>> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -85,16 +95,35 @@ gated("US2+US4: 导入与检索", () => {
     expect(afterDelJson.results.length).toBe(0);
 
 
-    async function issueKeyFor(kbId: string): Promise<string> {
-      const r = await fetch(`${BASE}/v1/keys`, {
-        method: "POST",
-        headers: adminHeaders(),
-        body: JSON.stringify({ label: `us2-key-${UNIQUE}-${kbId}`, write_kb: kbId, read_kbs: [kbId] }),
-      });
-      expect(r.status).toBe(201);
-      return (await r.json()).key;
-    }
   }, 300_000);
+
+  test("multipart 文件导入（md fixture）→ done(created) → 检索命中", async () => {
+    const kb = await createKb(`us2-mp-${UNIQUE}`);
+    const key = await issueKeyFor(kb);
+    const file = Bun.file("tests/fixtures/sample.md");
+    const form = new FormData();
+    form.append("file", file, "sample.md");
+    const submit = await fetch(`${BASE}/v1/kb/${kb}/documents`, {
+      method: "POST",
+      headers: { "X-API-Key": key },
+      body: form,
+    });
+    expect(submit.status).toBe(202);
+    const job = await waitJob(key, kb, (await submit.json()).job_id);
+    expect(["done", "done_with_warnings"]).toContain(String(job.status));
+    expect(job.outcome).toBe("created");
+    expect(String(job.doc_slug ?? "")).toBe(`${kb}/docs/sample`);
+    // 命中 multipart 导入的内容
+    const hit = await (
+      await fetch(`${BASE}/v1/kb/${kb}/retrieval`, {
+        method: "POST",
+        headers: { "X-API-Key": key, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "multipart-zebra", mode: "keyword", top_k: 5 }),
+      })
+    ).json();
+    expect(hit.results.length).toBeGreaterThan(0);
+    expect(String(hit.results[0]?.slug ?? "")).toContain(`${kb}/docs/`);
+  }, 180_000);
 
   test("不可达 URL → failed 带原因（SC-006）", async () => {
     const kb = await createKb(`us2-fail-${UNIQUE}`);

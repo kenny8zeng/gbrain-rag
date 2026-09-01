@@ -29,10 +29,18 @@ function delay(ms: number): Promise<void> {
  * 摄取 worker：SKIP LOCKED 原子认领 + heartbeat + 启动期回收扫描。
  * attempts 在认领时自增；失败且 attempts < max 则回 queued（下次认领重试），否则 failed。
  */
-export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Promise<IngestOutcome>): WorkerHandle {
+export interface WorkerOptions {
+  /** 轮询间隔（测试可注入缩短） */
+  tickDelayMs?: number;
+  /** 并发循环数（测试可注入单循环） */
+  concurrency?: number;
+}
+
+export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Promise<IngestOutcome>, opts?: WorkerOptions): WorkerHandle {
   let stopped = false;
   const current = new Set<Promise<void>>();
-  const concurrency = Math.max(1, Number(process.env.WORKER_CONCURRENCY ?? 2));
+  const tickDelayMs = opts?.tickDelayMs ?? 1_500;
+  const concurrency = Math.max(1, opts?.concurrency ?? Number(process.env.WORKER_CONCURRENCY ?? 2));
 
   async function recoverStale(): Promise<void> {
     const seconds = Math.floor(cfg.JOB_STALE_MS / 1000);
@@ -112,7 +120,7 @@ export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Pr
           console.error(JSON.stringify({ evt: "worker_tick_error", error: (e as Error).message }));
           await delay(3_000);
         }
-        await delay(1_500);
+        await delay(tickDelayMs);
       }
     });
     await Promise.all(loops);

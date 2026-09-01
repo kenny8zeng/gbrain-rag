@@ -82,10 +82,10 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
         required: true,
         content: {
           "multipart/form-data": {
-            // 三态输入不可由 OpenAPIHono 统一校验（会以任一声明 schema 拒绝其余 content-type 的合法请求），
-            // 故全部声明为宽松形状，必填语义由 handler 强制执行（422/413 与迁移前完全一致）
+            // 三态输入不可由 OpenAPIHono 统一校验：multipart 的 file 是 File 对象，
+            // z.string() 会 422；统一宽松形状，必填/大小语义由 handler 强制执行（与迁移前一致）
             schema: z.object({
-              file: z.string().openapi({ format: "binary" }).optional().describe("必填（服务端校验）"),
+              file: z.unknown().openapi({ format: "binary" }).optional().describe("必填（服务端校验）"),
               title: z.string().optional(),
             }),
           },
@@ -135,7 +135,8 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       const stored = `${Date.now()}-${randomHex(6)}-${file.name.replace(/[^\w.-]+/g, "_")}`;
       const buf = await file.arrayBuffer();
       writeFileSync(path.join(incomingDir(svc.cfg), stored), Buffer.from(buf));
-      const title = typeof body["title"] === "string" && body["title"] ? body["title"] : null;
+      // slug 派生用原始文件名（显式 title 优先），避免内部存储名的时间戳前缀进入页面标识
+      const title = typeof body["title"] === "string" && body["title"] ? body["title"] : file.name;
       const job = await svc.submitJob({ kbId, type: "file", sourceRef: stored, title });
       return c.json({ job_id: job.id, kb_id: kbId, status: job.status }, 202);
     }

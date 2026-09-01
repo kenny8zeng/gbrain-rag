@@ -49,6 +49,24 @@ export interface RetrievalInput {
   topK?: number;
 }
 
+/**
+ * T049 降级封装：优先常驻 serve 通道，故障回退 CLI spawn（CHK021）。
+ * 日志事件 retrieval_fallback 供运维观测降级频率。
+ */
+export async function retrieveWithFallback(
+  cfg: Config,
+  serveRetriever: (kbId: string, input: RetrievalInput) => Promise<RetrievalResponse>,
+  kbId: string,
+  input: RetrievalInput,
+): Promise<RetrievalResponse> {
+  try {
+    return await serveRetriever(kbId, input);
+  } catch (e) {
+    console.log(JSON.stringify({ evt: "retrieval_fallback", kb: kbId, error: (e as Error).message.slice(0, 200) }));
+    return retrieve(cfg, kbId, input);
+  }
+}
+
 export async function retrieve(
   cfg: Config,
   kbId: string,
