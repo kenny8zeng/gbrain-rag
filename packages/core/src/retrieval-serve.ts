@@ -44,6 +44,13 @@ export class InternalRetrieval {
     return { clientId: id, clientSecret: secret };
   }
 
+  /** 上游现存内部 client（进程重启后缓存丢失，据此恢复而非重复注册） */
+  private async findInternalClient(): Promise<string | null> {
+    const out = await runGbrain(this.cfg, { args: ["auth", "clients", "--json"], timeoutMs: 30_000 });
+    const j = JSON.parse(out.stdout) as { clients?: Array<{ client_id: string; client_name: string }> };
+    return (j.clients ?? []).find((c) => c.client_name.startsWith("rag-internal-"))?.client_id ?? null;
+  }
+
   /** 建库后纳管（CLI rescope，失败仅告警——federated-read 缺新库时该库检索降级 CLI） */
   async onKbCreated(kbId: string): Promise<void> {
     const creds = await this.ensureClient().catch(() => null);
@@ -60,15 +67,21 @@ export class InternalRetrieval {
     }
   }
 
-  /** 清除库后剔除（best-effort） */
+  /** 清除库后剔除（best-effort；进程缓存丢失时从上游查找） */
   async onKbPurged(): Promise<void> {
-    if (!this.clientId) return;
+    const clientId = this.clientId ?? (await this.findInternalClient().catch(() => null));
+    if (!clientId) return;
     const all = await listKbSources(this.cfg);
+    // 内部 client 的写 source 是注册时的最小库占位——若恰为被删库，须迁移（FK RESTRICT）
+    const j = JSON.parse(
+      (await runGbrain(this.cfg, { args: ["auth", "clients", "--json"], timeoutMs: 30_000 })).stdout,
+    ) as { clients?: Array<{ client_id: string; client_name: string; source_id: string }> };
+    const mine = (j.clients ?? []).find((c) => c.client_id === clientId);
+    const source = mine && !all.includes(mine.source_id) && all.length > 0 ? all[0] : undefined;
+    const args = ["auth", "rescope-client", clientId, "--federated-read", all.join(",")];
+    if (source) args.push("--source", source);
     try {
-      await runGbrain(this.cfg, {
-        args: ["auth", "rescope-client", this.clientId, "--federated-read", all.join(",")],
-        timeoutMs: 60_000,
-      });
+      await runGbrain(this.cfg, { args, timeoutMs: 60_000 });
     } catch {
       /* best-effort */
     }
@@ -91,11 +104,16 @@ export class InternalRetrieval {
 }
 
 async function listKbSources(cfg: Config): Promise<string[]> {
-  const j = await runGbrainJson<{ sources?: Array<{ id: string }> }>(cfg, {
-    args: ["sources", "list"],
-    timeoutMs: 30_000,
-  });
-  return (j.sources ?? []).map((s) => s.id).filter((id) => /^kb-[0-9a-f]{8}$/.test(id)).sort();
+  const [j, archivedJ] = await Promise.all([
+    runGbrainJson<{ sources?: Array<{ id: string }> }>(cfg, { args: ["sources", "list"], timeoutMs: 30_000 }),
+    // sources list 含已归档库；内部 client 的占位/读授权必须排除归档（否则 purge 时 FK 阻塞迁移死循环）
+    runGbrainJson<{ archived?: { id: string }[] }>(cfg, { args: ["sources", "archived"], timeoutMs: 30_000 }),
+  ]);
+  const archived = new Set((archivedJ.archived ?? []).map((s) => s.id));
+  return (j.sources ?? [])
+    .map((s) => s.id)
+    .filter((id) => /^kb-[0-9a-f]{8}$/.test(id) && !archived.has(id))
+    .sort();
 }
 
 /** 经 Upstream 注入内部 client Bearer 后执行 JSON-RPC tools/call（带 initialize 兜底） */

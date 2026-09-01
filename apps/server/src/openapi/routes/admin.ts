@@ -193,8 +193,8 @@ export function registerAdminRoutes(app: OpenAPIHono<Env>, svc: Services, admin:
   app.openapi(purgeKbRoute, libHandler<typeof purgeKbRoute>(async (c: Context<Env>) => {
     const id = c.req.param("id")!;
     try {
+      await svc.onKbPurged(); // 先剔除内部检索 client 的引用（FK RESTRICT），再删除
       await purgeKb(svc.cfg, id);
-      await svc.onKbPurged();
       return c.json({ id, status: "purged" });
     } catch (e) {
       return kbState(c, e);

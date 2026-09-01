@@ -76,12 +76,13 @@ async function snapshot(cfg: Config): Promise<{ all: SourceRow[]; archived: Set<
   if (cache && Date.now() - cache.at < CACHE_MS) return cache;
   const [list, archived] = await Promise.all([
     runGbrainJson<SourcesListResponse>(cfg, { args: ["sources", "list"], timeoutMs: 30_000 }),
-    runGbrainJson<{ sources?: { id: string }[] }>(cfg, { args: ["sources", "archived"], timeoutMs: 30_000 }),
+    // CLI sources archived 输出的键为 "archived"（非 "sources"）
+    runGbrainJson<{ archived?: { id: string }[] }>(cfg, { args: ["sources", "archived"], timeoutMs: 30_000 }),
   ]);
   cache = {
     at: Date.now(),
     all: list.sources ?? [],
-    archived: new Set((archived.sources ?? []).map((s) => s.id)),
+    archived: new Set((archived.archived ?? []).map((s) => s.id)),
   };
   return cache;
 }
