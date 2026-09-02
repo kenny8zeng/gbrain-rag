@@ -1,0 +1,37 @@
+name: Bug report
+description: 报告缺陷（安全漏洞请走 SECURITY.md 渠道，勿公开）
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 实际行为 vs 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 最小复现（环境变量配置、请求示例）
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      description: 部署形态（compose/裸跑）、解析器模式（docling/anydoc）、版本/tag
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响面
+      options:
+        - 知识库/凭证
+        - 文档摄取/解析
+        - 检索/MCP
+        - 管理代理/文档面
+        - 其他
+    validations:
+      required: true

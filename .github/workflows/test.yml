@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: Typecheck + Unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test tests/unit
+
+  # 契约/集成需运行实例（docling 服务 / gbrain 引擎），不在公共 CI 执行；
+  # 由维护者按 docs/testing-strategy.md 在自托管环境跑 bun run test 全量。

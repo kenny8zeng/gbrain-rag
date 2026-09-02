@@ -1,6 +1,10 @@
 # gbrain-rag
 
-以 [GBrain](https://github.com/garrytan/gbrain) 为知识库核心的 RAG 知识库服务：统一入口聚合知识分区管理、多来源文档摄取、REST 检索与面向 AI Agent 的 MCP 网关。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Bun](https://img.shields.io/badge/runtime-Bun-%23fbf0df)](https://bun.sh)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org)
+
+以 [GBrain](https://github.com/garrytan/gbrain) 为知识库核心的 **RAG 知识库服务**：统一入口聚合知识分区管理、多来源文档摄取（docling / anydoc 双解析器，失败自动回退）、REST 检索与面向 AI Agent 的 MCP 网关。
 
 ## 架构
 
@@ -64,3 +68,18 @@ bun test tests/integration          # 集成全链路（需 compose 栈）
 ```
 
 代码结构：`apps/server`（装配/supervisor/worker/路由）+ `packages/core`（领域模块，无 HTTP 依赖）。
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [docs/testing-strategy.md](docs/testing-strategy.md) | 测试方案：缺陷台账、金字塔门禁、四实例矩阵 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南（架构约定/测试纪律/提交规范） |
+| [CHANGELOG.md](CHANGELOG.md) | 变更日志（Keep a Changelog） |
+| [SECURITY.md](SECURITY.md) | 安全策略与漏洞报告 |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 贡献者公约 |
+| `specs/` | 特性 spec/plan/tasks（speckit 工作流：001 核心、002 CORS、003 OpenAPI、004 anydoc、005 解析优先级） |
+
+## 许可证
+
+[MIT](LICENSE)（Copyright (c) 2026 gbrain-rag contributors）

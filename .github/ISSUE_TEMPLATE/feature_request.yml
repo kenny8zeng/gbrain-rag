@@ -1,0 +1,23 @@
+name: Feature request
+description: 提议新能力
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 场景与痛点（Why），而非实现方案（How）
+    validations:
+      required: true
+  - type: textarea
+    id: propose
+    attributes:
+      label: 期望行为
+      description: 用户视角的结果；可附验收口径
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 影响评估
+      description: 涉及面（接口契约/配置/测试方案/文档）
