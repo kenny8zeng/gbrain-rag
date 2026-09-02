@@ -2,6 +2,7 @@ import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { Services } from "../../app";
 import type { Env } from "../../middleware/auth";
 import { Health } from "../schemas";
+import { resolveParserFor } from "@core/ingest/resolver";
 
 /** 系统面：健康检查（公开，无 security） */
 export function registerSystemRoutes(app: OpenAPIHono<Env>, svc: Services): void {
@@ -27,7 +28,13 @@ export function registerSystemRoutes(app: OpenAPIHono<Env>, svc: Services): void
     const serveReady = svc.serveReady();
     const ok = dbOk && serveReady;
     return c.json(
-      { status: ok ? "ok" : "degraded", gbrain_serve: serveReady, db: dbOk, docling: doclingOk },
+      {
+        status: ok ? "ok" : "degraded",
+        gbrain_serve: serveReady,
+        db: dbOk,
+        docling: doclingOk,
+        parser_mode: resolveParserFor(svc.cfg).kind,
+      },
       ok ? 200 : 503,
     );
   });

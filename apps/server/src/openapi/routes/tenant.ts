@@ -6,6 +6,8 @@ import { libHandler } from "../handler";
 import { canReadKb, canWriteKb } from "../../middleware/auth";
 import { ensureKbActive, KbNotFoundError, KbArchivedError } from "@core/kb";
 import { runGbrain, runGbrainJson } from "@core/gbrain-cli";
+import { resolveParserFor } from "@core/ingest/resolver";
+import { ParserUnavailableError } from "@core/ingest/parser";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -51,6 +53,13 @@ function incomingDir(cfg: Services["cfg"]): string {
 
 function randomHex(n: number): string {
   return [...randomBytes(n)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "tif", "svg", "heic"]);
+
+function isImageExt(filename: string): boolean {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTS.has(ext);
 }
 
 const KbIdParam = z.object({ id: z.string() });
@@ -120,11 +129,20 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
     const contentType = c.req.header("content-type") ?? "";
     mkdirSync(incomingDir(svc.cfg), { recursive: true });
 
+    const parserKind = resolveParserFor(svc.cfg).kind;
+
     if (contentType.includes("multipart/form-data")) {
       const body = await c.req.parseBody();
       const file = body["file"];
       if (!(file instanceof File)) {
         return c.json({ error: { code: "INVALID_PARAMS", message: 'multipart field "file" is required' } }, 422);
+      }
+      // 内置解析器模式不支持独立图片（FR-004/Q1=A）
+      if (parserKind === "anydoc" && (file.type.startsWith("image/") || isImageExt(file.name))) {
+        return c.json(
+          { error: { code: "PARSER_UNAVAILABLE", message: new ParserUnavailableError("image").message } },
+          422,
+        );
       }
       if (file.size > svc.cfg.MAX_UPLOAD_BYTES) {
         return c.json(
@@ -139,6 +157,14 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       const title = typeof body["title"] === "string" && body["title"] ? body["title"] : file.name;
       const job = await svc.submitJob({ kbId, type: "file", sourceRef: stored, title });
       return c.json({ job_id: job.id, kb_id: kbId, status: job.status }, 202);
+    }
+
+    if (parserKind === "anydoc" && contentType.includes("application/json")) {
+      // 内置解析器模式不支持网页抓取（FR-004）；json body 只可能是 url 导入
+      return c.json(
+        { error: { code: "PARSER_UNAVAILABLE", message: new ParserUnavailableError("url").message } },
+        422,
+      );
     }
 
     if (contentType.includes("application/json")) {

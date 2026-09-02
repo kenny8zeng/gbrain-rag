@@ -5,7 +5,8 @@ export const configSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   ADMIN_TOKEN: z.string().min(16, "ADMIN_TOKEN must be at least 16 characters"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  DOCLING_URL: z.url("DOCLING_URL must be a valid URL"),
+  /** 外部解析服务地址：空 = 内置解析器（anydoc）；PARSER_MODE=docling 时必填 */
+  DOCLING_URL: z.string().refine((v) => v === "" || /^https?:\/\//.test(v), "DOCLING_URL must be a URL or empty"),
   GBRAIN_BIN: z.string().default("/usr/local/bin/gbrain"),
   GBRAIN_SERVE_PORT: z.coerce.number().int().positive().default(7333),
   /** 宿主机开发时可设 false 跳过 serve 子进程（MCP 面不可用） */
@@ -24,6 +25,14 @@ export const configSchema = z.object({
   JOB_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(104_857_600),
   /** 跨域来源列表（逗号分隔；空=关闭；* = 显式全放行） */
+  /** 解析器模式：auto=按 DOCLING_URL（默认）| anydoc | docling */
+  PARSER_MODE: z.enum(["auto", "anydoc", "docling"]).default("auto"),
+  /** anydoc 托管 OCR（需 FIRECRAWL_API_KEY；开启后扫描 PDF 自动升级，数据出机器） */
+  ANYDOC_OCR: z
+    .string()
+    .default("off")
+    .transform((v) => v === "on" || v === "true"),
+  FIRECRAWL_API_KEY: z.string().default(""),
   CORS_ORIGINS: z.string().default("").refine((v) => {
     for (const entry of v.split(",").map((e) => e.trim()).filter(Boolean)) {
       if (entry === "*") continue;
@@ -36,7 +45,11 @@ export const configSchema = z.object({
 export type Config = z.infer<typeof configSchema>;
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
-  return configSchema.parse(env);
+  const cfg = configSchema.parse(env);
+  if (cfg.PARSER_MODE === "docling" && cfg.DOCLING_URL === "") {
+    throw new Error("DOCLING_URL is required when PARSER_MODE=docling");
+  }
+  return cfg;
 }
 
 export function brainDir(cfg: Config, kbId: string): string {

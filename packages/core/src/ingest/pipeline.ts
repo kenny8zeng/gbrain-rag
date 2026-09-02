@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Config } from "../config";
 import { docsDir, incomingDir } from "../config";
 import { runGbrain, pageExists } from "../gbrain-cli";
-import { convertFileBytes, convertWebUrl } from "./docling";
+import { resolveParserFor } from "./resolver";
 
 export interface IngestJob {
   id: string;
@@ -77,7 +77,7 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
     baseName = job.title ?? job.sourceRef.replace(/\.md$/i, "");
     sourceFile = job.sourceRef;
   } else if (job.type === "url") {
-    const r = await convertWebUrl(cfg, job.sourceRef);
+    const r = await resolveParserFor(cfg).url!.convertUrl(job.sourceRef);
     md = r.md;
     baseName = (job.title ?? slugifyName(new URL(job.sourceRef).pathname.split("/").filter(Boolean).pop() ?? "")) || new URL(job.sourceRef).hostname;
     sourceUrl = job.sourceRef;
@@ -85,7 +85,7 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
     const rawPath = path.join(incomingDir(cfg), job.sourceRef);
     if (!existsSync(rawPath)) throw new Error(`incoming file missing: ${job.sourceRef}`);
     const bytes = readFileSync(rawPath);
-    const r = await convertFileBytes(cfg, new Uint8Array(bytes), path.basename(rawPath));
+    const r = await resolveParserFor(cfg).file.convertFile(new Uint8Array(bytes), path.basename(rawPath));
     md = r.md;
     baseName = job.title ?? path.basename(rawPath);
     sourceFile = job.sourceRef;

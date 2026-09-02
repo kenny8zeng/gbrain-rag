@@ -5,6 +5,7 @@
     "": {
       "name": "gbrain-rag",
       "dependencies": {
+        "@firecrawl/anydoc": "^0.2.4",
         "@hono/zod-openapi": "^1.6.1",
         "cli2api": "github:kenny8zeng/cli2api#4359231ec0401e252562c8881629dd32b052ee97",
         "hono": "^4.9.0",
@@ -31,6 +32,22 @@
   },
   "packages": {
     "@asteasolutions/zod-to-openapi": ["@asteasolutions/zod-to-openapi@9.1.0", "https://registry.npmmirror.com/@asteasolutions/zod-to-openapi/-/zod-to-openapi-9.1.0.tgz", { "dependencies": { "openapi3-ts": "^4.6.0" }, "peerDependencies": { "zod": "^4.0.0" } }, "sha512-pLMeRgRYS7/vZIgAAkOe2P6+XGTifR1MT9pqDoxZ11EmcJJ+DPmdPqLN8ZZF4U8R9KHCCQCS9c2wtuE8wSrfkw=="],
+
+    "@firecrawl/anydoc": ["@firecrawl/anydoc@0.2.4", "https://registry.npmmirror.com/@firecrawl/anydoc/-/anydoc-0.2.4.tgz", { "optionalDependencies": { "@firecrawl/anydoc-darwin-arm64": "0.2.4", "@firecrawl/anydoc-darwin-x64": "0.2.4", "@firecrawl/anydoc-linux-arm64-gnu": "0.2.4", "@firecrawl/anydoc-linux-arm64-musl": "0.2.4", "@firecrawl/anydoc-linux-x64-gnu": "0.2.4", "@firecrawl/anydoc-linux-x64-musl": "0.2.4", "@firecrawl/anydoc-win32-x64-msvc": "0.2.4" }, "bin": { "anydoc": "cli.js" } }, "sha512-rfJxa5L+nhoqR5yodcRZoGDLaSfxMTpBuhVj1gSacfW4ZGjBt4cjfErXwaKjPYrpWRTPIBye2sh36UhqgOP1Og=="],
+
+    "@firecrawl/anydoc-darwin-arm64": ["@firecrawl/anydoc-darwin-arm64@0.2.4", "https://registry.npmmirror.com/@firecrawl/anydoc-darwin-arm64/-/anydoc-darwin-arm64-0.2.4.tgz", { "os": "darwin", "cpu": "arm64" }, "sha512-1Eg0rPGVMN052E7Y2+zswANS0KLaWhXvYb9CPgO8HEtclzu3hKAIJ00lIu5PF+DXafZ10ZS4fmrcP+9Ifct9qw=="],
+
+    "@firecrawl/anydoc-darwin-x64": ["@firecrawl/anydoc-darwin-x64@0.2.4", "https://registry.npmmirror.com/@firecrawl/anydoc-darwin-x64/-/anydoc-darwin-x64-0.2.4.tgz", { "os": "darwin", "cpu": "x64" }, "sha512-fTM8y6COu+jBqWRJ0Je0OqaDDt7YxJ8LU4ISoypO5eOBNXI3+l6tK1ZRwUclYWXGBr/6JaUWEgdyJVFfd/fpJg=="],
+
+    "@firecrawl/anydoc-linux-arm64-gnu": ["@firecrawl/anydoc-linux-arm64-gnu@0.2.4", "https://registry.npmmirror.com/@firecrawl/anydoc-linux-arm64-gnu/-/anydoc-linux-arm64-gnu-0.2.4.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-gRrrjluTfQCjOO6wBefEP1QumYlUcGWKP7secVIO+ly8U/+DDQ70bOHW2lOGu19hA/23j7bc7bb3oLPAaBY82A=="],
+
+    "@firecrawl/anydoc-linux-arm64-musl": ["@firecrawl/anydoc-linux-arm64-musl@0.2.4", "https://registry.npmmirror.com/@firecrawl/anydoc-linux-arm64-musl/-/anydoc-linux-arm64-musl-0.2.4.tgz", { "os": "linux", "cpu": "arm64" }, "sha512-fpzby6xqD709GmYUpnrWh7/2Csa6lwGrZrYPNGyn4KMEuJ1ibsNv6I3kdZAotMUKZ8nlNdPp32v964eBpsijcw=="],
+
+    "@firecrawl/anydoc-linux-x64-gnu": ["@firecrawl/anydoc-linux-x64-gnu@0.2.4", "https://registry.npmmirror.com/@firecrawl/anydoc-linux-x64-gnu/-/anydoc-linux-x64-gnu-0.2.4.tgz", { "os": "linux", "cpu": "x64" }, "sha512-yfvx+iGo2CvZH0TB9MeyNjkrd5/psNFEuxkl2Jah/VNFesPRASqjjCkDRY7tKw7fPij1u/UyFVxI6bsu6Iow9Q=="],
+
+    "@firecrawl/anydoc-linux-x64-musl": ["@firecrawl/anydoc-linux-x64-musl@0.2.4", "https://registry.npmmirror.com/@firecrawl/anydoc-linux-x64-musl/-/anydoc-linux-x64-musl-0.2.4.tgz", { "os": "linux", "cpu": "x64" }, "sha512-9OWpM84c5SA/2wjfFxgfhupxziapus+7DERWmcOvkVxNp2H5Qj/9Y74c9leP2i03SjmBDl9tYWMVd3k/S3rY6w=="],
+
+    "@firecrawl/anydoc-win32-x64-msvc": ["@firecrawl/anydoc-win32-x64-msvc@0.2.4", "https://registry.npmmirror.com/@firecrawl/anydoc-win32-x64-msvc/-/anydoc-win32-x64-msvc-0.2.4.tgz", { "os": "win32", "cpu": "x64" }, "sha512-E7d14hy5kZNsMNnHiutU6r9yr53LrKXSsMSFtl0QhU/1KWuvRnjhQEuMiuW4YbsMcPlEaK10WtBVF86g9OMW6A=="],
 
     "@hono/zod-openapi": ["@hono/zod-openapi@1.6.1", "https://registry.npmmirror.com/@hono/zod-openapi/-/zod-openapi-1.6.1.tgz", { "dependencies": { "@asteasolutions/zod-to-openapi": "^9.1.0", "@hono/zod-validator": "^0.9.0", "openapi3-ts": "^4.5.0" }, "peerDependencies": { "hono": ">=4.10.0", "zod": "^4.0.0" } }, "sha512-z1xS3FZxl4bBkU3kMIsQsLtsqxPTha5XZCsDEPMSZ6+3RRBQI7KED1GeoDpq2WueXCacsNIjcB0MtCnEHY7ahQ=="],
 

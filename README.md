@@ -17,7 +17,8 @@ AI Agent ──X-API-Key──▶ ┌──────────────�
 
 - **知识库（KB）** = gbrain source；`POST /v1/kb` 自动供给（目录 + git + sources add）
 - **Agent 凭证** = 一枚 gbrain OAuth client：写分区唯一（`--source` + slug 栅栏），读授权 `--federated-read` 事前审批组合，跨源检索自动合并（引擎侧硬隔离，实证见 `specs/001-gbrain-rag-service/research.md` D2）
-- **摄取**：文件（含图片）/网页 URL/Markdown 直传 → docling 转换 → 单文档单页面 → gbrain 分块 + embed；异步任务表驱动，失败重试 3 次
+- **摄取**：文件（含图片）/网页 URL/Markdown 直传 → 解析器转换 → 单文档单页面 → gbrain 分块 + embed；异步任务表驱动，失败重试 3 次
+  - **解析器选择**：`DOCLING_URL` 配置 → docling 服务（url/图片/网页全能力）；为空 → 内置 anydoc（进程内 native，Office/PDF 毫秒级；url/独立图片明确拒绝并指引）。`PARSER_MODE` 可显式覆盖；扫描 PDF 配 `FIRECRAWL_API_KEY` + `ANYDOC_OCR=on` 自动走托管 OCR
 - **管理代理**：`/v1/admin/gbrain/*` 经 cli2api（git 依赖，零源码改动）暴露 gbrain 全量 CLI；只读状态路由支持 `?format=json`
 
 ## 快速开始

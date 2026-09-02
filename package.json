@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@firecrawl/anydoc": "^0.2.4",
     "@hono/zod-openapi": "^1.6.1",
     "cli2api": "github:kenny8zeng/cli2api#4359231ec0401e252562c8881629dd32b052ee97",
     "hono": "^4.9.0",

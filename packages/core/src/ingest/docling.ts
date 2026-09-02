@@ -1,11 +1,28 @@
 import type { Config } from "../config";
 
+import type { FileParser, UrlParser } from "./parser";
+
 export interface ConvertResult {
   md: string;
   status: string;
 }
 
 type FetchImpl = (url: string, init?: RequestInit) => Promise<Response>;
+
+/** docling 解析器适配（FileParser + UrlParser，行为与既有函数一致） */
+export class DoclingParser implements FileParser, UrlParser {
+  readonly kind = "docling" as const;
+  constructor(
+    private readonly cfg: Config,
+    private readonly fetchImpl: FetchImpl = fetch,
+  ) {}
+  convertFile(bytes: Uint8Array, filename: string): Promise<{ md: string }> {
+    return convertFileBytes(this.cfg, bytes, filename, this.fetchImpl);
+  }
+  convertUrl(url: string): Promise<{ md: string }> {
+    return convertWebUrl(this.cfg, url, this.fetchImpl);
+  }
+}
 
 interface DoclingDocument {
   md_content?: string;

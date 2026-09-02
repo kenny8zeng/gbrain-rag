@@ -13,6 +13,7 @@ import { registerSystemRoutes } from "./openapi/routes/system";
 import { registerTenantRoutes } from "./openapi/routes/tenant";
 import { registerAdminRoutes } from "./openapi/routes/admin";
 import { registerDocsUi } from "./openapi/ui";
+import { resolveParserFor } from "@core/ingest/resolver";
 import { corsMiddleware } from "./middleware/cors";
 
 export interface Services {
