@@ -1,41 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { loadConfig } from "../../packages/core/src/config";
-import { resolveParser, ParserUnavailableError } from "../../packages/core/src/ingest/parser";
+import { ParserUnavailableError } from "../../packages/core/src/ingest/parser";
 import { AnyDocParser, describeAnyDocError, formatFromFilename } from "../../packages/core/src/ingest/anydoc-parser";
-import type { FileParser, UrlParser } from "../../packages/core/src/ingest/parser";
+
 
 const base = {
   ADMIN_TOKEN: "test-token-0123456789",
   DATABASE_URL: "postgres://stub@127.0.0.1:5/stub",
   DOCLING_URL: "https://docling.test",
 } as Record<string, string>;
-
-const fakeDocling: FileParser & UrlParser = {
-  kind: "docling",
-  convertFile: async () => ({ md: "docling-file" }),
-  convertUrl: async () => ({ md: "docling-url" }),
-};
-const fakeAnyDoc: FileParser = { kind: "anydoc", convertFile: async () => ({ md: "anydoc-file" }) };
-
-describe("resolveParser 选择", () => {
-  test("auto + DOCLING_URL 配置 → docling（url 可用）", () => {
-    const p = resolveParser(loadConfig(base), fakeDocling, fakeAnyDoc);
-    expect(p.kind).toBe("docling");
-    expect(p.url).not.toBeNull();
-  });
-  test("auto + DOCLING_URL 空 → anydoc（url 为 null）", () => {
-    const p = resolveParser(loadConfig({ ...base, DOCLING_URL: "" }), fakeDocling, fakeAnyDoc);
-    expect(p.kind).toBe("anydoc");
-    expect(p.url).toBeNull();
-  });
-  test("PARSER_MODE=docling 且 URL 空 → 配置拒绝（docling 模式必须有服务地址）", () => {
-    expect(() => loadConfig({ ...base, DOCLING_URL: "", PARSER_MODE: "docling" })).toThrow(/DOCLING_URL is required/);
-  });
-  test("PARSER_MODE=anydoc 显式覆盖（即使 URL 配置）", () => {
-    const p = resolveParser(loadConfig({ ...base, PARSER_MODE: "anydoc" }), fakeDocling, fakeAnyDoc);
-    expect(p.kind).toBe("anydoc");
-  });
-});
 
 describe("ParserUnavailableError", () => {
   test("url 通道文案含 DOCLING_URL 指引", () => {

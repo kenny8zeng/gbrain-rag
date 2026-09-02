@@ -3,6 +3,39 @@ import { buildArgv } from "cli2api/src/argv";
 import { runCli, Semaphore, encodeSse } from "cli2api/src/runner";
 
 /**
+ * 并发闸门（自愈）：对称 acquire/release + 60s 残留自动清空。
+ * cli2api runCli 在部分异常/客户端断开路径可能不触发调用方预期的完成回调，
+ * 长时间运行可能残留占用——自愈保证闸门不被永久占死（D14）。
+ */
+class ProxyGate {
+  private count = 0;
+  private since = 0;
+
+  constructor(
+    private readonly max: number,
+    private readonly staleMs = 60_000,
+  ) {}
+
+  tryAcquire(): boolean {
+    const now = Date.now();
+    // 自愈：闸门占满超过 staleMs（远超任何单次 CLI 调用时长）→ 判定为残留并清空
+    if (this.count >= this.max && this.since > 0 && now - this.since > this.staleMs) {
+      this.count = 0;
+      this.since = 0;
+    }
+    if (this.count >= this.max) return false;
+    if (this.count === 0) this.since = now;
+    this.count++;
+    return true;
+  }
+
+  release(): void {
+    if (this.count > 0) this.count--;
+    if (this.count === 0) this.since = 0;
+  }
+}
+
+/**
  * 只读状态类路由的 JSON 输出映射（key = `${method}|${argvPrefix.join(".")}`）。
  * format=json 语义在本网关实现，cli2api 上游零改动；提案合入后迁移至 spec 注记。
  */
@@ -23,7 +56,10 @@ const JSON_ROUTES: Record<string, string> = {
 
 export interface AdminProxy {
   spec: CliSpec;
-  sem: Semaphore;
+  /** 并发闸门（自愈 ProxyGate；与 runCli 内部释放解耦——cli2api runCli 异常/断开路径可能不完成，D14） */
+  gate: ProxyGate;
+  /** 供 runCli 释放的哑 semaphore（其无条件 release 不影响 gate 计数） */
+  cliSem: Semaphore;
 }
 
 export function loadAdminProxy(specsDir: string): AdminProxy {
@@ -33,7 +69,9 @@ export function loadAdminProxy(specsDir: string): AdminProxy {
   }
   const spec = registry.list().find((s: CliSpec) => s.id === "gbrain");
   if (!spec) throw new Error(`gbrain spec not found in ${specsDir}`);
-  return { spec, sem: new Semaphore(spec.maxConcurrency) };
+  // gate 与 cliSem 分离：gate 由本模块对称 acquire/release（自愈）；
+  // cliSem 仅供 runCli 内部 release（其 release 无 acquire 配对，负计数无害）
+  return { spec, gate: new ProxyGate(spec.maxConcurrency), cliSem: new Semaphore(1) };
 }
 
 function findRoute(spec: CliSpec, method: string, subPath: string): CliRoute | undefined {
@@ -55,11 +93,17 @@ export async function handleAdminRequest(proxy: AdminProxy, req: Request, mountP
   const route = findRoute(proxy.spec, method, subPath);
   if (!route) return jsonErr(404, "NOT_FOUND", `no route ${method.toUpperCase()} ${subPath}`);
 
-  // 并发闸门：acquire 是调用方职责（cli2api runCli 仅在结束时 release）；
-  // 未获取到 → 429（spec maxConcurrency）
-  if (!proxy.sem.tryAcquire()) {
+  // 并发闸门：本模块对称 acquire/release（不依赖 runCli 内部释放——其异常路径可能不 release，D14）
+  if (!proxy.gate.tryAcquire()) {
     return jsonErr(429, "RATE_LIMITED", "admin CLI concurrency limit exceeded");
   }
+  let gateHeld = true;
+  const releaseGate = () => {
+    if (gateHeld) {
+      gateHeld = false;
+      proxy.gate.release();
+    }
+  };
 
   const wantJson = url.searchParams.get("format") === "json";
   const jsonFlag = JSON_ROUTES[`${method}|${route.argvPrefix.join(".")}`];
@@ -88,7 +132,7 @@ export async function handleAdminRequest(proxy: AdminProxy, req: Request, mountP
     const chunks: string[] = [];
     let exitCode: number | null = null;
     try {
-      await runCli(proxy.spec, argv, proxy.sem, {
+      await runCli(proxy.spec, argv, proxy.cliSem, {
         signal: req.signal,
         onEvent: (e) => {
           if (e.type === "stdout") chunks.push(e.data);
@@ -96,8 +140,10 @@ export async function handleAdminRequest(proxy: AdminProxy, req: Request, mountP
         },
       });
     } catch {
+      releaseGate();
       return jsonErr(502, "CLI_FAILED", "admin CLI execution failed");
     }
+    releaseGate();
     if (exitCode !== 0) {
       return jsonErr(502, "CLI_FAILED", `admin CLI exited with ${exitCode}`, { output: chunks.join("").slice(0, 2000) });
     }
@@ -115,12 +161,19 @@ export async function handleAdminRequest(proxy: AdminProxy, req: Request, mountP
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      runCli(proxy.spec, argv, proxy.sem, {
+      runCli(proxy.spec, argv, proxy.cliSem, {
         signal: req.signal,
         onEvent: (e) => controller.enqueue(encodeSse(e)),
       })
         .catch(() => undefined)
-        .finally(() => controller.close());
+        .finally(() => {
+          releaseGate();
+          controller.close();
+        });
+    },
+    cancel() {
+      // 客户端断开：runCli 可能尚未 settle——立即释放闸门（D14）
+      releaseGate();
     },
   });
   return new Response(stream, {

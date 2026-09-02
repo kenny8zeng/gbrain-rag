@@ -12,8 +12,8 @@
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 [P] 编写 deploy/migrations/0002-parser-log.sql：`ALTER TABLE rag_jobs ADD COLUMN parser_log TEXT;`（幂等可重放即跳过已存在列——采用 IF NOT EXISTS 语法）
-- [ ] T002 [P] deploy/compose.test.yaml 扩展 3102（docling 可用 + PARSER_PREFERENCE=anydoc）与 3103（DOCLING_URL=http://127.0.0.1:1 + pref=docling）service（user: root 沿用）
+- [X] T001 [P] 编写 deploy/migrations/0002-parser-log.sql：`ALTER TABLE rag_jobs ADD COLUMN parser_log TEXT;`（幂等可重放即跳过已存在列——采用 IF NOT EXISTS 语法）
+- [X] T002 [P] deploy/compose.test.yaml 扩展 3102（docling 可用 + PARSER_PREFERENCE=anydoc）与 3103（DOCLING_URL=http://127.0.0.1:1 + pref=docling）service（user: root 沿用）
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
@@ -21,11 +21,11 @@
 
 **⚠️ CRITICAL**: 本阶段完成前 US1-US4 不得开工
 
-- [ ] T003 config.ts 增加 `PARSER_PREFERENCE`（z.enum docling|anydoc，default docling）并校验（docling 未配置时忽略）；parser.ts `resolveParser` 升级 `resolveChain(cfg, docling, anydoc): {mode, primary, fallback, url}`（矩阵 per research D2，保留强制模式无回退语义）；resolver.ts 返回链
-- [ ] T004 新建 packages/core/src/ingest/fallback.ts：`convertWithFallback(chain, bytes, filename): Promise<{md, used: "docling"|"anydoc", fallbackFrom?: string}>`——try primary → 失败记录原错误 → fallback（存在）→ 成功带链；双失败抛最终错误（含链说明）
-- [ ] T005 [P] 先写 tests/unit/fallback.test.ts：注入故障（fake primary 抛/fake fallback 成功）→ 回退成功 + used/fallbackFrom；primary 成功不触发；双失败链错误——红灯
-- [ ] T006 [P] 先写 tests/unit/parser.test.ts 扩展 resolveChain 矩阵 5 行断言（含强制模式无 fallback）——红灯
-- [ ] T007 worker.ts 成功路径写 `parser_log`（done/done_with_warnings 时非空）；失败路径 error 含链说明
+- [X] T003 config.ts 增加 `PARSER_PREFERENCE`（z.enum docling|anydoc，default docling）并校验（docling 未配置时忽略）；parser.ts `resolveParser` 升级 `resolveChain(cfg, docling, anydoc): {mode, primary, fallback, url}`（矩阵 per research D2，保留强制模式无回退语义）；resolver.ts 返回链
+- [X] T004 新建 packages/core/src/ingest/fallback.ts：`convertWithFallback(chain, bytes, filename): Promise<{md, used: "docling"|"anydoc", fallbackFrom?: string}>`——try primary → 失败记录原错误 → fallback（存在）→ 成功带链；双失败抛最终错误（含链说明）
+- [X] T005 [P] 先写 tests/unit/fallback.test.ts：注入故障（fake primary 抛/fake fallback 成功）→ 回退成功 + used/fallbackFrom；primary 成功不触发；双失败链错误——红灯
+- [X] T006 [P] 先写 tests/unit/parser.test.ts 扩展 resolveChain 矩阵 5 行断言（含强制模式无 fallback）——红灯
+- [X] T007 worker.ts 成功路径写 `parser_log`（done/done_with_warnings 时非空）；失败路径 error 含链说明
 
 **Checkpoint**: 单测绿 + migration 应用 + 既有 101 项零回归（3000 docling 可用 primary 成功行为不变）
 
@@ -37,12 +37,12 @@
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] 先写 tests/integration/us6-priority.test.ts（自适应：3103 实例 parser_preference=docling 且 docling=false 时跑回退断言；3000 跑 parser_log=docling 断言）——docx 导入后任务查询断言 parser_log 值；红灯
+- [X] T008 [P] [US1] 先写 tests/integration/us6-priority.test.ts（自适应：3103 实例 parser_preference=docling 且 docling=false 时跑回退断言；3000 跑 parser_log=docling 断言）——docx 导入后任务查询断言 parser_log 值；红灯
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] pipeline.ts 文件分支接 convertWithFallback（parser_log 透出）；任务 jobJson/详情响应带 parser_log 字段（tenant+admin 两侧）
-- [ ] T010 [US1] 运行 T008 至全绿（3103 回退 + 3000 primary）；docling 可用 101 项零回归
+- [X] T009 [US1] pipeline.ts 文件分支接 convertWithFallback（parser_log 透出）；任务 jobJson/详情响应带 parser_log 字段（tenant+admin 两侧）
+- [X] T010 [US1] 运行 T008 至全绿（3103 回退 + 3000 primary）；docling 可用 101 项零回归
 
 **Checkpoint**: US1 独立验收 = quickstart 场景 1/3
 
@@ -54,11 +54,11 @@
 
 ### Tests for User Story 2
 
-- [ ] T011 [P] [US2] 补 tests/integration/us6-priority.test.ts 3102 分支：docx parser_log=anydoc、health parser_primary=anydoc、URL 导入 202→done
+- [X] T011 [P] [US2] 补 tests/integration/us6-priority.test.ts 3102 分支：docx parser_log=anydoc、health parser_primary=anydoc、URL 导入 202→done
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] 无独立实现（resolveChain 已按 pref 选主）；若 T011 暴露缺口则修（如 health parser_primary 透出）——跑 T011 至全绿
+- [X] T012 [US2] 无独立实现（resolveChain 已按 pref 选主）；若 T011 暴露缺口则修（如 health parser_primary 透出）——跑 T011 至全绿
 
 **Checkpoint**: US1+US2 = 优先级双方向验证
 
@@ -68,7 +68,7 @@
 
 ### Tests for User Story 3
 
-- [ ] T013 [P] [US3] 重跑 tests/integration/us5-anydoc.test.ts（3101）断言零回归（无代码改动预期；如 parser_log 字段引入致 job 响应形状变化则同步 us5 断言）
+- [X] T013 [P] [US3] 重跑 tests/integration/us5-anydoc.test.ts（3101）断言零回归（无代码改动预期；如 parser_log 字段引入致 job 响应形状变化则同步 us5 断言）
 
 **Checkpoint**: 三模式（3101/3000/3102）行为矩阵成立
 
@@ -78,20 +78,20 @@
 
 ### Tests for User Story 4
 
-- [ ] T014 [P] [US4] tests/contract/limits.test.ts 扩展 health 断言（parser_primary/parser_preference 存在且 ∈ {docling,anydoc}）
+- [X] T014 [P] [US4] tests/contract/limits.test.ts 扩展 health 断言（parser_primary/parser_preference 存在且 ∈ {docling,anydoc}）
 
 ### Implementation for User Story 4
 
-- [ ] T015 [US4] system.ts health 返回 parser_primary（chain.mode）与 parser_preference（cfg）；schemas.Health 扩展两字段（openapi drift 自动一致）
-- [ ] T016 [US4] us6 补 URL 不回退断言（3103：URL 导入 docling 不可达 → failed，error 无 anydoc 痕迹）
-- [ ] T017 [US4] docs/testing-strategy.md 更新：四实例矩阵表（§2/§3）、SC-005 归属、用例计数
+- [X] T015 [US4] system.ts health 返回 parser_primary（chain.mode）与 parser_preference（cfg）；schemas.Health 扩展两字段（openapi drift 自动一致）
+- [X] T016 [US4] us6 补 URL 不回退断言（3103：URL 导入 docling 不可达 → failed，error 无 anydoc 痕迹）
+- [X] T017 [US4] docs/testing-strategy.md 更新：四实例矩阵表（§2/§3）、SC-005 归属、用例计数
 
 **Checkpoint**: quickstart 全场景 + 测试方案 v1.2
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T018 [P] deploy/.env.example 增加 PARSER_PREFERENCE 说明；README 解析器优先级章节
-- [ ] T019 全量回归矩阵执行：3000 全量 101+ 新契约零回归；3101 us5；3102/3103 us6；单测全绿；提交
+- [X] T018 [P] deploy/.env.example 增加 PARSER_PREFERENCE 说明；README 解析器优先级章节
+- [X] T019 全量回归矩阵执行：3000 全量 101+ 新契约零回归；3101 us5；3102/3103 us6；单测全绿；提交
 
 ---
 

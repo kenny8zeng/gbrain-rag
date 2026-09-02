@@ -4,6 +4,7 @@ import type { Config } from "../config";
 import { docsDir, incomingDir } from "../config";
 import { runGbrain, pageExists } from "../gbrain-cli";
 import { resolveParserFor } from "./resolver";
+import { convertWithFallback, parserLogFor } from "./fallback";
 
 export interface IngestJob {
   id: string;
@@ -18,6 +19,8 @@ export interface IngestOutcome {
   outcome?: "created" | "updated";
   docSlug?: string;
   error?: string;
+  /** 解析路径记录（primary 或回退链，md 直传为空） */
+  parserLog?: string;
 }
 
 /** 小写、非字母数字折叠为 -、去首尾 -、≤64 字符 */
@@ -69,6 +72,7 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
   let baseName: string;
   let sourceFile: string | undefined;
   let sourceUrl: string | undefined;
+  let parserLog: string | undefined;
 
   if (job.type === "md") {
     const rawPath = path.join(incomingDir(cfg), job.sourceRef);
@@ -85,8 +89,9 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
     const rawPath = path.join(incomingDir(cfg), job.sourceRef);
     if (!existsSync(rawPath)) throw new Error(`incoming file missing: ${job.sourceRef}`);
     const bytes = readFileSync(rawPath);
-    const r = await resolveParserFor(cfg).file.convertFile(new Uint8Array(bytes), path.basename(rawPath));
-    md = r.md;
+    const conv = await convertWithFallback(resolveParserFor(cfg), new Uint8Array(bytes), path.basename(rawPath));
+    md = conv.md;
+    parserLog = parserLogFor(conv);
     baseName = job.title ?? path.basename(rawPath);
     sourceFile = job.sourceRef;
   }
@@ -120,6 +125,7 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
         outcome: existed ? "updated" : "created",
         docSlug: slug,
         error: `put partially failed (embed/unreachable?): ${(e as Error).message.slice(0, 300)}`,
+        parserLog,
       };
     }
     throw e;
@@ -145,5 +151,5 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
     renameSync(src, path.join(destDir, `${slugifyName(title)}.md`));
   }
 
-  return { status, outcome: existed ? "updated" : "created", docSlug: slug, error };
+  return { status, outcome: existed ? "updated" : "created", docSlug: slug, error, parserLog };
 }

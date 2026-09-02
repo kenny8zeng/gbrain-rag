@@ -27,6 +27,8 @@ export const configSchema = z.object({
   /** 跨域来源列表（逗号分隔；空=关闭；* = 显式全放行） */
   /** 解析器模式：auto=按 DOCLING_URL（默认）| anydoc | docling */
   PARSER_MODE: z.enum(["auto", "anydoc", "docling"]).default("auto"),
+  /** 双解析器并存时的首选（docling 配置时生效）：docling | anydoc */
+  PARSER_PREFERENCE: z.enum(["docling", "anydoc"]).default("docling"),
   /** anydoc 托管 OCR（需 FIRECRAWL_API_KEY；开启后扫描 PDF 自动升级，数据出机器） */
   ANYDOC_OCR: z
     .string()

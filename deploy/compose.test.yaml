@@ -41,6 +41,54 @@ services:
       postgres:
         condition: service_healthy
 
+  # 3102：docling 可用 + anydoc 优先（PARSER_PREFERENCE=anydoc）
+  gbrain-rag-pref-anydoc:
+    user: root
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      PORT: 3000
+      ADMIN_TOKEN: local-dev-token-0123456789
+      DATABASE_URL: postgres://gbrain:gbrain@postgres:5432/gbrain_test
+      DOCLING_URL: https://docling.ml.aesiot.dev
+      PARSER_PREFERENCE: anydoc
+      DATA_DIR: /data/rag-pref
+      GBRAIN_SERVE_PORT: 7335
+      MAX_UPLOAD_BYTES: "1048576"
+    volumes:
+      - ragpref:/data/rag-pref
+    ports:
+      - "3102:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 3103：docling 指向不可达 + docling 优先（回退触发场景）
+  gbrain-rag-fallback:
+    user: root
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      PORT: 3000
+      ADMIN_TOKEN: local-dev-token-0123456789
+      DATABASE_URL: postgres://gbrain:gbrain@postgres:5432/gbrain_test
+      DOCLING_URL: http://127.0.0.1:1
+      PARSER_PREFERENCE: docling
+      DATA_DIR: /data/rag-fb
+      GBRAIN_SERVE_PORT: 7336
+      MAX_UPLOAD_BYTES: "1048576"
+    volumes:
+      - ragfb:/data/rag-fb
+    ports:
+      - "3103:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgtest:
   ragtest:
+  ragpref:
+  ragfb:

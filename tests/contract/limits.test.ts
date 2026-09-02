@@ -67,5 +67,7 @@ gated("contract: 边界与查询面", () => {
     expect(typeof h.db).toBe("boolean");
     expect(typeof h.docling).toBe("boolean");
     expect(["docling", "anydoc"]).toContain(h.parser_mode);
+    expect(["docling", "anydoc"]).toContain(h.parser_primary);
+    expect(["docling", "anydoc"]).toContain(h.parser_preference);
   });
 });

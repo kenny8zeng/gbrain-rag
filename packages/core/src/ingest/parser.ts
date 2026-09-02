@@ -35,18 +35,27 @@ export interface UrlParser {
 }
 
 export interface ResolvedParser {
-  kind: "docling" | "anydoc";
-  file: FileParser;
-  url: UrlParser | null; // anydoc 模式为 null（FR-004）
+  /** 首选（当前生效主解析器） */
+  mode: "docling" | "anydoc";
+  primary: FileParser;
+  /** 回退解析器（仅文件类；强制模式/anydoc 唯一时为 null——无回退） */
+  fallback: FileParser | null;
+  /** docling 独有能力（URL/图片）；anydoc 唯一/强制时为 null（FR-004） */
+  url: UrlParser | null;
 }
 
 /**
- * 解析器选择：PARSER_MODE=anydoc|docling 显式覆盖；auto（默认）按 DOCLING_URL 是否配置。
- * 启动/首次调用解析一次（配置不变）。
+ * 解析链选择（005，research D2 矩阵）：
+ * - PARSER_MODE=docling|anydoc：强制单解析器（无回退，测试/排障语义）
+ * - auto + DOCLING_URL 空：anydoc 唯一（无回退、无 url）
+ * - auto + DOCLING_URL 配置：双解析器并存，PARSER_PREFERENCE 决定首选，另一为回退
  */
 export function resolveParser(cfg: Config, docling: FileParser & UrlParser, anydoc: FileParser): ResolvedParser {
-  const mode = cfg.PARSER_MODE === "auto" ? (cfg.DOCLING_URL ? "docling" : "anydoc") : cfg.PARSER_MODE;
-  return mode === "docling"
-    ? { kind: "docling", file: docling, url: docling }
-    : { kind: "anydoc", file: anydoc, url: null };
+  const forced = cfg.PARSER_MODE !== "auto" ? cfg.PARSER_MODE : null;
+  if (forced === "docling") return { mode: "docling", primary: docling, fallback: null, url: docling };
+  if (forced === "anydoc") return { mode: "anydoc", primary: anydoc, fallback: null, url: null };
+  if (!cfg.DOCLING_URL) return { mode: "anydoc", primary: anydoc, fallback: null, url: null };
+  return cfg.PARSER_PREFERENCE === "anydoc"
+    ? { mode: "anydoc", primary: anydoc, fallback: docling, url: docling }
+    : { mode: "docling", primary: docling, fallback: anydoc, url: docling };
 }

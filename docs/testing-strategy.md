@@ -7,7 +7,7 @@
 测试体系的目的是**证明缺陷被修复且不再复发**。收敛判据：
 
 1. **缺陷回归台账全部 ✓**（见 §5）——每个历史缺陷有且至少一项回归测试
-2. **全量测试绿**（101 项 docling 模式 + 6 项 anydoc 模式，实例隔离串行）
+2. **全量测试绿**（107 项 docling 模式 + us5/us6 模式实例用例，实例隔离串行）
 3. **测试环境零残留**：套件结束后生产/测试栈无测试数据（自清理，非事后手工）
 4. **SC 全覆盖**：spec 全部 Success Criteria 有测试归属（§7 映射表）
 
@@ -20,14 +20,16 @@
 | L2 集成 | 全链路（导入/检索/MCP/生命周期） | 测试隔离实例（串行） | ~90s | 推送前 |
 | L3 验收/性能 | scale-check（400 样本 P95）、quickstart 场景 | 生产镜像 | 分钟级 | 发布前手动 |
 
-**双解析模式矩阵**（004 起）：
+**解析实例矩阵**（005 起，四实例）：
 
-| 模式 | 实例 | 测试集 |
+| 实例 | 配置 | 测试集 |
 |---|---|---|
-| docling | 主实例（3000，DOCLING_URL 配置） | 全量（91 项；us5 自适应 skip） |
-| anydoc | 隔离实例（3101，PARSER_MODE=anydoc，deploy/compose.test.yaml） | us5 专属 6 项 + parser 单测 |
+| 3000（主回归） | docling 可用 + PARSER_PREFERENCE=docling | 全量（107 项）+ us6 docling 分支 |
+| 3101 | DOCLING_URL 空（anydoc 唯一） | us5 专属 6 项 |
+| 3102 | docling 可用 + PARSER_PREFERENCE=anydoc | us6 anydoc 优先分支 |
+| 3103 | docling 指向不可达 + pref=docling | us6 回退触发分支 + URL 不回退 |
 
-us5-anydoc 顶部探测 `/health.parser_mode`，非 anydoc 实例自动 skip——docling 全量回归不误跑 anydoc 用例。
+us5/us6 顶部探测 `/health` 自适应跑对应分支——docling 全量回归不误跑 anydoc 用例。
 
 执行规则：
 - L1/L2 必须运行在**测试隔离实例**（§3），禁止指向生产/共享实例
@@ -64,7 +66,11 @@ us5-anydoc 顶部探测 `/health.parser_mode`，非 anydoc 实例自动 skip—�
 | D13 | 内部 client 重启累积泄漏（多 client 并存阻塞 purge） | 2026-09-01 | us4 D5 + fallback 单测 | ✓ |
 
 台账新增/修复缺陷时追加行；全 ✓ 才允许宣称收敛。
-**004（anydoc）说明**：实施期发现的问题（DOCLING_URL 必填冲突、守卫误伤 md、health 落点）均已修复并入测试（us5 md 用例、parser 单测、config 校验）——无遗留 ✗ 项，不新增台账行。
+**004（anydoc）说明**：实施期发现的问题（DOCLING_URL 必填冲突、守卫误伤 md、health 落点）均已修复并入测试——无遗留 ✗ 项。
+**005 新增**：
+| # | 缺陷 | 修复 | 回归测试 | 状态 |
+|---|---|---|---|---|
+| D14 | 代理并发闸门泄漏：cli2api runCli 异常/断开路径不触发完成 → 服务端 gate 累积残留误伤 429 | ProxyGate 自愈（60s）+ SSE cancel 即释放 + gate 与 runCli 内部 sem 解耦 | admin-proxy 契约（连续两轮全量绿 + 结束后 gate 干净） | ✓ |
 
 ## 5. 首批补齐（P1 = 台账 ✗ 项）
 
@@ -80,7 +86,7 @@ us5-anydoc 顶部探测 `/health.parser_mode`，非 anydoc 实例自动 skip—�
 tests/
 ├── unit/          # L0：config/cors/credentials/docling/gbrain-cli/pipeline/worker/retrieval-fallback/parser
 ├── contract/      # L1：api/cors/openapi/openapi-drift/docs-ui
-├── integration/   # L2：us1-授权链 / us2+us4-导入检索删除 / us3-MCP隔离 / us4-KB生命周期 / us5-anydoc
+├── integration/   # L2：us1-授权链 / us2+us4-导入检索删除 / us3-MCP隔离 / us4-KB生命周期 / us5-anydoc / us6-priority
 └── fixtures/      # sample.md（multipart）/ test.docx（anydoc，中文+表格）
 deploy/compose.test.yaml   # anydoc 模式隔离实例（3101）
 scripts/scale-check.ts     # L3 性能
@@ -98,6 +104,10 @@ scripts/scale-check.ts     # L3 性能
 | 004 SC-3 | us5 url/图片 422 断言 |
 | 004 SC-4 | docling 模式 91 项全量回归 |
 | 004 SC-5 | parser 单测 OCR 分支（mock needsOcr） |
+| 005 SC-1~2 | us6 回退分支（3103 parser_log 链记录） |
+| 005 SC-3 | us6 三实例矩阵（3000/3102/3103 自适应） |
+| 005 SC-4 | us6 primary 断言（parser_log=docling/anydoc） |
+| 005 SC-5 | us6 URL 不回退断言（3103 error 无 anydoc） |
 
 ## 8. 已知缺口（2026-09-02 状态）
 

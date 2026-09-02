@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "bun run apps/server/src/index.ts",
     "start": "bun run apps/server/src/index.ts",
-    "test": "bun test --timeout 360000",
+    "test": "bun test --timeout 360000 --parallel=1",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

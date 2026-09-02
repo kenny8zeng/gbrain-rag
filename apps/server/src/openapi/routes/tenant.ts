@@ -44,6 +44,7 @@ function jobJson(r: Record<string, unknown>) {
     doc_slug: r.doc_slug,
     created_at: r.created_at,
     updated_at: r.updated_at,
+    parser_log: r.parser_log ?? null,
   };
 }
 
@@ -129,7 +130,7 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
     const contentType = c.req.header("content-type") ?? "";
     mkdirSync(incomingDir(svc.cfg), { recursive: true });
 
-    const parserKind = resolveParserFor(svc.cfg).kind;
+    const chain = resolveParserFor(svc.cfg);
 
     if (contentType.includes("multipart/form-data")) {
       const body = await c.req.parseBody();
@@ -137,8 +138,8 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       if (!(file instanceof File)) {
         return c.json({ error: { code: "INVALID_PARAMS", message: 'multipart field "file" is required' } }, 422);
       }
-      // 内置解析器模式不支持独立图片（FR-004/Q1=A）
-      if (parserKind === "anydoc" && (file.type.startsWith("image/") || isImageExt(file.name))) {
+      // 无 docling 能力（url null = anydoc 唯一/强制）时拒绝独立图片（FR-004）
+      if (chain.url === null && (file.type.startsWith("image/") || isImageExt(file.name))) {
         return c.json(
           { error: { code: "PARSER_UNAVAILABLE", message: new ParserUnavailableError("image").message } },
           422,
@@ -159,7 +160,7 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       return c.json({ job_id: job.id, kb_id: kbId, status: job.status }, 202);
     }
 
-    if (parserKind === "anydoc" && contentType.includes("application/json")) {
+    if (chain.url === null && contentType.includes("application/json")) {
       // 内置解析器模式不支持网页抓取（FR-004）；json body 只可能是 url 导入
       return c.json(
         { error: { code: "PARSER_UNAVAILABLE", message: new ParserUnavailableError("url").message } },

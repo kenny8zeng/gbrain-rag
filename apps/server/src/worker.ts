@@ -78,7 +78,8 @@ export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Pr
         await db`
           UPDATE rag_jobs
           SET status = ${outcome.status}, outcome = ${outcome.outcome ?? null},
-              doc_slug = ${outcome.docSlug ?? null}, error = ${outcome.error ?? null}, updated_at = now()
+              doc_slug = ${outcome.docSlug ?? null}, error = ${outcome.error ?? null},
+              parser_log = ${outcome.parserLog ?? null}, updated_at = now()
           WHERE id = ${job.id}
         `;
       } catch (e) {

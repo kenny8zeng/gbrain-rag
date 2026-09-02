@@ -33,7 +33,9 @@ export function registerSystemRoutes(app: OpenAPIHono<Env>, svc: Services): void
         gbrain_serve: serveReady,
         db: dbOk,
         docling: doclingOk,
-        parser_mode: resolveParserFor(svc.cfg).kind,
+        parser_mode: resolveParserFor(svc.cfg).mode,
+        parser_primary: resolveParserFor(svc.cfg).mode,
+        parser_preference: svc.cfg.PARSER_PREFERENCE,
       },
       ok ? 200 : 503,
     );

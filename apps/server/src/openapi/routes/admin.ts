@@ -65,6 +65,7 @@ function jobJson(r: Record<string, unknown>) {
     doc_slug: r.doc_slug,
     created_at: r.created_at,
     updated_at: r.updated_at,
+    parser_log: r.parser_log ?? null,
   };
 }
 

@@ -115,6 +115,8 @@ export const Health = z.object({
   db: z.boolean(),
   docling: z.boolean(),
   parser_mode: z.enum(["docling", "anydoc"]),
+  parser_primary: z.enum(["docling", "anydoc"]),
+  parser_preference: z.enum(["docling", "anydoc"]),
 });
 
 /** 鉴权方案引用（docs 内的 security 字段形状） */
