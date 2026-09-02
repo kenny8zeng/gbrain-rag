@@ -7,7 +7,7 @@
 测试体系的目的是**证明缺陷被修复且不再复发**。收敛判据：
 
 1. **缺陷回归台账全部 ✓**（见 §5）——每个历史缺陷有且至少一项回归测试
-2. **全量测试绿**（91 项 docling 模式 + 6 项 anydoc 模式，实例隔离串行）
+2. **全量测试绿**（101 项 docling 模式 + 6 项 anydoc 模式，实例隔离串行）
 3. **测试环境零残留**：套件结束后生产/测试栈无测试数据（自清理，非事后手工）
 4. **SC 全覆盖**：spec 全部 Success Criteria 有测试归属（§7 映射表）
 
@@ -99,9 +99,18 @@ scripts/scale-check.ts     # L3 性能
 | 004 SC-4 | docling 模式 91 项全量回归 |
 | 004 SC-5 | parser 单测 OCR 分支（mock needsOcr） |
 
-## 8. 已知剩余缺口（低优先，记录不阻塞）
+## 8. 已知缺口（2026-09-02 状态）
 
-429 并发限流（MCP/代理）、SSE 事件形态、413 超限、health 形状、审计日志格式、jobs 过滤参数、surface/concurrency 凭证变更。
+| 缺口 | 状态 |
+|---|---|
+| MCP 逐 key 429 并发 | ✓ tests/unit/mcp-gateway.test.ts（挂起上游确定性验证） |
+| 代理面 429（maxConcurrency） | ✓ tests/contract/admin-proxy.test.ts（实现缺陷已修：acquire 是调用方职责） |
+| SSE 事件形态（stdout/exit） | ✓ tests/contract/admin-proxy.test.ts |
+| 413 上传超限 | ✓ tests/contract/limits.test.ts（实例 MAX_UPLOAD_BYTES=1MB） |
+| health 字段形状 | ✓ tests/contract/limits.test.ts |
+| jobs 过滤参数 | ✓ tests/contract/limits.test.ts |
+| PATCH surface/concurrency 持久化 | ✓ tests/contract/limits.test.ts |
+| 审计日志格式 | ✗ 不可经 API 断言（stdout 侧）；以代码评审覆盖 |
 
 ## 9. 维护规则
 

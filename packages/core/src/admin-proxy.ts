@@ -55,6 +55,12 @@ export async function handleAdminRequest(proxy: AdminProxy, req: Request, mountP
   const route = findRoute(proxy.spec, method, subPath);
   if (!route) return jsonErr(404, "NOT_FOUND", `no route ${method.toUpperCase()} ${subPath}`);
 
+  // 并发闸门：acquire 是调用方职责（cli2api runCli 仅在结束时 release）；
+  // 未获取到 → 429（spec maxConcurrency）
+  if (!proxy.sem.tryAcquire()) {
+    return jsonErr(429, "RATE_LIMITED", "admin CLI concurrency limit exceeded");
+  }
+
   const wantJson = url.searchParams.get("format") === "json";
   const jsonFlag = JSON_ROUTES[`${method}|${route.argvPrefix.join(".")}`];
   if (wantJson && !jsonFlag) {

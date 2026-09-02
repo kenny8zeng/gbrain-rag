@@ -32,6 +32,7 @@ services:
       PARSER_MODE: anydoc
       DATA_DIR: /data/rag-test
       GBRAIN_SERVE_PORT: 7334
+      MAX_UPLOAD_BYTES: "1048576"
     volumes:
       - ragtest:/data/rag-test
     ports:
