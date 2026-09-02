@@ -80,6 +80,30 @@ bun test tests/integration          # 集成全链路（需 compose 栈）
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 贡献者公约 |
 | `specs/` | 特性 spec/plan/tasks（speckit 工作流：001 核心、002 CORS、003 OpenAPI、004 anydoc、005 解析优先级） |
 
+## 发布镜像（GitHub Actions）
+
+多架构（`linux/amd64`、`linux/arm64`）镜像由 [`.github/workflows/docker-multi-registry.yml`](.github/workflows/docker-multi-registry.yml) 自动构建并发布到双注册表：
+
+| 注册表 | 镜像 |
+|---|---|
+| GHCR | `ghcr.io/kenny8zeng/gbrain-rag` |
+| Docker Hub | `kenny8zeng/gbrain-rag` |
+
+### 触发与标签
+
+| 触发 | 标签 |
+|---|---|
+| 推送 `main` | `main`、`latest` |
+| Tag `v*`（如 `v0.1.0`） | tag、`latest` |
+| 手动 `workflow_dispatch` | 分支 ref、`latest` |
+
+### 一次性配置（仓库 Settings → Secrets and variables → Actions）
+
+- `DOCKERHUB_USERNAME`（Variables 或 Secrets）
+- `DOCKERHUB_TOKEN`（Secrets，Docker Hub 个人访问令牌，Read & Write 权限）
+
+GHCR 无需配置（自动 `GITHUB_TOKEN` + `packages: write`）。镜像内 gbrain 固定从 `garrytan/gbrain` v0.47.6.0 源码构建（见 `deploy/Dockerfile`）。
+
 ## 许可证
 
 [MIT](LICENSE)（Copyright (c) 2026 gbrain-rag contributors）
