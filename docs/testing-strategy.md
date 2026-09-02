@@ -42,14 +42,17 @@
 |---|---|---|---|---|
 | D1 | worker 饿死（docling 504 阻塞队列） | 1b422b2 | tests/unit/worker.test.ts（并发/重试/回收） | ✓ |
 | D2 | 嵌套 slug 删除 404 | 57a6591 | tests/integration/us2（删除→检索无） | ✓ |
-| D3 | 列表接口 500（tab 文本解析） | 57a6591 | **缺：列表接口形状断言** | ✗ P1 |
-| D4 | 归档态判定失效（archived 键名 → 无 410） | 57a6591 | **缺：归档→410 用例** | ✗ P1 |
-| D5 | purge FK 阻塞（内部 client source 占位/归档过滤） | af073f5 | **缺：purge 生命周期用例** | ✗ P1 |
+| D3 | 列表接口 500（tab 文本解析） | 57a6591 | us4 列表形状/删除计数 | ✓ |
+| D4 | 归档态判定失效（archived 键名 → 无 410） | 57a6591 | us4 归档→410 | ✓ |
+| D5 | purge FK 阻塞（内部 client source 占位/归档过滤） | af073f5 | us4 purge 409/force | ✓ |
 | D6 | multipart schema 运行时 422（z.string vs File） | e19b641 | us2 multipart 用例 | ✓ |
 | D7 | multipart slug 时间戳前缀污染 | e19b641 | us2 multipart slug 断言 | ✓ |
 | D8 | Error 子类 .name 检查失效（404/409→500） | 003 实施期 | 契约 409/404/410 | ✓ |
 | D9 | OpenAPIHono 三态 body 校验误伤合法请求 | 003 实施期 | us2 三态 + 契约 | ✓ |
-| D10 | 归档库访问语义（403 vs 410 优先级） | 演示观察 | **缺：语义用例** | ✗ P1 |
+| D10 | 归档库访问语义（401/410/403 优先级） | 演示观察 | us4 归档检索语义 | ✓ |
+| D11 | 归档被只读引用阻塞（应仅写引用阻塞） | 2026-09-01 | us4 D4（只读不阻塞） | ✓ |
+| D12 | purge 被租户 key 引用阻塞且无 force 联动 | 2026-09-01 | us4 D5（409/force 吊销） | ✓ |
+| D13 | 内部 client 重启累积泄漏（多 client 并存阻塞 purge） | 2026-09-01 | us4 D5 + fallback 单测 | ✓ |
 
 台账新增/修复缺陷时追加行；全 ✓ 才允许宣称收敛。
 

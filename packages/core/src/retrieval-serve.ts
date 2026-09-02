@@ -24,6 +24,8 @@ export class InternalRetrieval {
     // 取当前全部 kb-* 来源作为 federated-read 基础
     const all = await listKbSources(this.cfg);
     if (all.length === 0) return null; // 尚无知识库，首次建库时再注册
+    // D13：先吊销遗留内部 client（进程重启缓存丢失后不重复注册）
+    await this.revokeInternalClients();
     const name = `rag-internal-${randomHex(6)}`;
     const output = await runGbrain(this.cfg, {
       args: [
@@ -44,11 +46,24 @@ export class InternalRetrieval {
     return { clientId: id, clientSecret: secret };
   }
 
-  /** 上游现存内部 client（进程重启后缓存丢失，据此恢复而非重复注册） */
-  private async findInternalClient(): Promise<string | null> {
+  /** 上游现存内部 client（重启累积的旧 client 会泄漏并阻塞 purge——D13） */
+  private async findInternalClients(): Promise<string[]> {
     const out = await runGbrain(this.cfg, { args: ["auth", "clients", "--json"], timeoutMs: 30_000 });
     const j = JSON.parse(out.stdout) as { clients?: Array<{ client_id: string; client_name: string }> };
-    return (j.clients ?? []).find((c) => c.client_name.startsWith("rag-internal-"))?.client_id ?? null;
+    return (j.clients ?? []).filter((c) => c.client_name.startsWith("rag-internal-")).map((c) => c.client_id);
+  }
+
+  /** 吊销全部现存内部 client（确保任意时刻至多一个存活，注册新 client 前调用） */
+  private async revokeInternalClients(): Promise<void> {
+    const ids = await this.findInternalClients();
+    for (const id of ids) {
+      try {
+        await runGbrain(this.cfg, { args: ["auth", "revoke-client", id], timeoutMs: 30_000 });
+      } catch {
+        /* best-effort */
+      }
+    }
+    if (ids.length > 0) console.log(JSON.stringify({ evt: "internal_client", mode: "revoked_stale", count: ids.length }));
   }
 
   /** 建库后纳管（CLI rescope，失败仅告警——federated-read 缺新库时该库检索降级 CLI） */
@@ -67,24 +82,15 @@ export class InternalRetrieval {
     }
   }
 
-  /** 清除库后剔除（best-effort；进程缓存丢失时从上游查找） */
+  /**
+   * 清除库后：吊销全部内部 client 并清缓存（D12/D13）。
+   * 内部 client 无状态（token 在进程内存），吊销后下次检索/建库懒注册全新 client——
+   * 新注册时 sources 已不含被删库，source/federated 引用天然正确，无需迁移逻辑。
+   */
   async onKbPurged(): Promise<void> {
-    const clientId = this.clientId ?? (await this.findInternalClient().catch(() => null));
-    if (!clientId) return;
-    const all = await listKbSources(this.cfg);
-    // 内部 client 的写 source 是注册时的最小库占位——若恰为被删库，须迁移（FK RESTRICT）
-    const j = JSON.parse(
-      (await runGbrain(this.cfg, { args: ["auth", "clients", "--json"], timeoutMs: 30_000 })).stdout,
-    ) as { clients?: Array<{ client_id: string; client_name: string; source_id: string }> };
-    const mine = (j.clients ?? []).find((c) => c.client_id === clientId);
-    const source = mine && !all.includes(mine.source_id) && all.length > 0 ? all[0] : undefined;
-    const args = ["auth", "rescope-client", clientId, "--federated-read", all.join(",")];
-    if (source) args.push("--source", source);
-    try {
-      await runGbrain(this.cfg, { args, timeoutMs: 60_000 });
-    } catch {
-      /* best-effort */
-    }
+    await this.revokeInternalClients();
+    this.clientId = null;
+    this.clientSecret = null;
   }
 
   /** serve 通道检索；失败抛错由调用方降级 */

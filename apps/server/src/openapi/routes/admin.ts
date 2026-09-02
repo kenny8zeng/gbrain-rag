@@ -3,8 +3,8 @@ import type { Context } from "hono";
 import type { Services } from "../../app";
 import type { AdminMiddleware, Env } from "../../middleware/auth";
 import { libHandler } from "../handler";
-import { archiveKb, createKb, purgeKb, KbNotFoundError, KbArchivedError, KbInUseError } from "@core/kb";
-import { issueKey, rescopeKey, revokeKey, LabelTakenError } from "@core/credentials";
+import { archiveKb, createKb, purgeKb, referencingCredentials, KbNotFoundError, KbArchivedError, KbInUseError } from "@core/kb";
+import { issueKey, rescopeKey, revokeKey, LabelTakenError } from "@core/credentials"; // purge force 联动吊销
 import {
   ErrorEnvelope,
   KbCreateBody,
@@ -192,10 +192,19 @@ export function registerAdminRoutes(app: OpenAPIHono<Env>, svc: Services, admin:
   });
   app.openapi(purgeKbRoute, libHandler<typeof purgeKbRoute>(async (c: Context<Env>) => {
     const id = c.req.param("id")!;
+    const force = c.req.query("force") === "true";
     try {
-      await svc.onKbPurged(); // 先剔除内部检索 client 的引用（FK RESTRICT），再删除
+      // D12：purge 前预检全部引用（租户 key 的上游 client 以 source_id 指向该库，FK 阻塞）
+      const refs = await referencingCredentials(svc.db, id);
+      if (refs.length > 0) {
+        if (!force) throw new KbInUseError(id, refs);
+        for (const keyId of refs) {
+          await revokeKey(svc.cfg, svc.db, keyId).catch(() => undefined);
+        }
+      }
+      await svc.onKbPurged(); // 迁移/重建内部检索 client（FK RESTRICT）
       await purgeKb(svc.cfg, id);
-      return c.json({ id, status: "purged" });
+      return c.json({ id, status: "purged", revoked_keys: force ? refs.length : 0 });
     } catch (e) {
       return kbState(c, e);
     }

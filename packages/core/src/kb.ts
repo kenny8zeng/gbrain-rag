@@ -137,7 +137,7 @@ export async function createKb(cfg: Config, db: DB, name: string): Promise<KbSum
   return { id, name, status: "active", pageCount: 0, lastSyncAt: null };
 }
 
-/** 引用该库的有效凭证 id 列表（用于归档前置检查） */
+/** 引用该库的有效凭证 id 列表（写或读） */
 export async function referencingCredentials(db: DB, kbId: string): Promise<string[]> {
   const rows = await db`
     SELECT id FROM rag_keys
@@ -147,9 +147,16 @@ export async function referencingCredentials(db: DB, kbId: string): Promise<stri
   return rows.map((r: { id: string }) => r.id);
 }
 
+/** 仅写引用（归档只被写引用阻塞；只读引用归档后悬空得 410，无害——D11） */
+export async function writeReferencingCredentials(db: DB, kbId: string): Promise<string[]> {
+  const rows = await db`SELECT id FROM rag_keys WHERE revoked_at IS NULL AND write_kb = ${kbId}`;
+  return rows.map((r: { id: string }) => r.id);
+}
+
 export async function archiveKb(cfg: Config, db: DB, kbId: string, opts: { force: boolean }): Promise<void> {
   await ensureKbActive(cfg, kbId);
-  const refs = await referencingCredentials(db, kbId);
+  // D11：归档只被写引用阻塞（只读引用归档后自然 410，允许归档）
+  const refs = await writeReferencingCredentials(db, kbId);
   if (refs.length > 0 && !opts.force) throw new KbInUseError(kbId, refs);
   await runGbrain(cfg, { args: ["sources", "archive", kbId], timeoutMs: 60_000 });
   invalidateSourceCache();

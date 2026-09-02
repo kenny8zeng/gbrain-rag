@@ -21,7 +21,8 @@ writeFileSync(
 case "$1 $2" in
   "auth register-client") echo "Client ID: gbrain_cl_testid"; echo "Client Secret: gbrain_cs_testsecret";;
   "sources list") echo '{"sources":[{"id":"kb-12345678"}]}';; 
-  "sources archived") echo '{"archived":[]}';;
+  "sources archived") echo '{"archived":[]}';; 
+  "auth clients") echo '{"clients":[]}';;
   "search "*) echo '[{"slug":"cli-slug","title":"t","chunk_text":"cli content","score":1,"source_id":"kb-12345678"}]';;
   "query "*) echo '[{"slug":"cli-slug","title":"t","chunk_text":"cli content","score":1,"source_id":"kb-12345678"}]';;
   *) exit 0;;
