@@ -13,8 +13,8 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain —— Q1（URL/图片在默认模式下的处置）待确认：spec 已按"明确拒绝 + 指引"立规（FR-004），若用户预期是"强制要求至少一个服务配置"则需修订
-- [x] Requirements are testable and unambiguous（除 Q1 外）
+- [x] No [NEEDS CLARIFICATION] markers remain —— Q1 已确认选 A（默认模式 URL/图片明确拒绝 + 指引，FR-004 成立）；OCR 处置假设（本地失败带指引 + 可选托管 OCR）无异议通过
+- [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
 - [x] All acceptance scenarios are defined
@@ -32,4 +32,4 @@
 ## Notes
 
 - 依据：gbrain 评估（tools/anydoc-firecrawl，2026-09-02 实测 46 份文档）——spec 引用为背景依据而非发明数据
-- 验证记录：第 1 轮 15/16 通过，1 个澄清问题待用户确认（Q1）
+- 验证记录：第 1 轮 15/16 → Q1 用户确认选 A → 第 2 轮 16/16 全部通过
