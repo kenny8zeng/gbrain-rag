@@ -1,13 +1,13 @@
 # 测试方案（Testing Strategy）
 
-**版本**: 1.1 | **日期**: 2026-09-02 | **状态**: 生效（anydoc 解析器纳入）
+**版本**: 1.2 | **日期**: 2026-09-02 | **状态**: 生效（解析优先级/回退 005 纳入）
 
 ## 1. 目标与收敛判据
 
 测试体系的目的是**证明缺陷被修复且不再复发**。收敛判据：
 
 1. **缺陷回归台账全部 ✓**（见 §5）——每个历史缺陷有且至少一项回归测试
-2. **全量测试绿**（107 项 docling 模式 + us5/us6 模式实例用例，实例隔离串行）
+2. **全量测试绿**（110 项 docling 模式 + us5/us6 模式实例用例，文件串行 `--parallel=1`）
 3. **测试环境零残留**：套件结束后生产/测试栈无测试数据（自清理，非事后手工）
 4. **SC 全覆盖**：spec 全部 Success Criteria 有测试归属（§7 映射表）
 
@@ -24,7 +24,7 @@
 
 | 实例 | 配置 | 测试集 |
 |---|---|---|
-| 3000（主回归） | docling 可用 + PARSER_PREFERENCE=docling | 全量（107 项）+ us6 docling 分支 |
+| 3000（主回归） | docling 可用 + PARSER_PREFERENCE=docling | 全量（110 项）+ us6 docling 分支 |
 | 3101 | DOCLING_URL 空（anydoc 唯一） | us5 专属 6 项 |
 | 3102 | docling 可用 + PARSER_PREFERENCE=anydoc | us6 anydoc 优先分支 |
 | 3103 | docling 指向不可达 + pref=docling | us6 回退触发分支 + URL 不回退 |
@@ -41,9 +41,11 @@ us5/us6 顶部探测 `/health` 自适应跑对应分支——docling 全量回�
 **问题**：集成测试曾直接跑在共享 compose 栈上——每次回归残留几十个 kb/keys/jobs，靠事后手工 cleanup 脚本；并行实例互相干扰产生假红假绿。
 
 **方案（已落地，2026-09-02）**：
-- `deploy/compose.test.yaml`：独立 project `gbrain-rag-test`；端口 `3101`；postgres 独立 database `gbrain_test`；`DATA_DIR=/data/rag-test`；独立 volume（pgtest/ragtest）；测试实例以 root 运行（隔离卷属主简化，无加固需求）
+- `deploy/compose.test.yaml`：独立 project `gbrain-rag-test`；四 service（3101 anydoc 唯一 / 3102 anydoc 优先 / 3103 docling 不可达回退 + 共享 postgres `gbrain_test`）；独立 volume；测试实例以 root 运行（隔离卷属主简化）
 - 启动：`docker compose -p gbrain-rag-test -f deploy/compose.test.yaml up -d --build`
-- 跑测：`TEST_BASE_URL=http://localhost:3101 ADMIN_TOKEN=<test-token> bun test tests/integration/us5-anydoc.test.ts`
+- 跑测（按实例选文件，us5/us6 自适应探测 health）：
+  - `TEST_BASE_URL=http://localhost:3101 ... bun test tests/integration/us5-anydoc.test.ts`
+  - `TEST_BASE_URL=http://localhost:3102|3103 ... bun test tests/integration/us6-priority.test.ts`
 - 清理：`docker compose -p gbrain-rag-test -f deploy/compose.test.yaml down -v`（连卷销毁）
 - 套件内自清理：每个集成 suite 用随机前缀命名资源，`afterAll` 经管理面 API 归档+purge 自建 kb（顺带覆盖 D4/D5 路径）
 
@@ -108,6 +110,7 @@ scripts/scale-check.ts     # L3 性能
 | 005 SC-3 | us6 三实例矩阵（3000/3102/3103 自适应） |
 | 005 SC-4 | us6 primary 断言（parser_log=docling/anydoc） |
 | 005 SC-5 | us6 URL 不回退断言（3103 error 无 anydoc） |
+| 005 D14 | admin-proxy 契约（连续两轮全量绿 + 结束后 gate 干净） |
 
 ## 8. 已知缺口（2026-09-02 状态）
 
