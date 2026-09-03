@@ -20,6 +20,21 @@ describe("modelConfigState（A：中立配置面判定）", () => {
     expect(st.rerank).toBe(false);
   });
 
+  test("dashscope-rerank provider（DASHSCOPE_API_KEY，无端点变量）→ rerank true", () => {
+    const st = modelConfigState(loadConfig({
+      ...base,
+      GBRAIN_RERANKER_MODEL: "dashscope-rerank:qwen3-rerank",
+      DASHSCOPE_API_KEY: "sk-test",
+    }));
+    expect(st.rerank).toBe(true);
+    expect(st.embedding).toBe(false);
+  });
+
+  test("中立映射派生等价（llama-server:x vs x）→ 无 conflict 警告", () => {
+    const ws = validateModelConfig(loadConfig({ ...base, GBRAIN_EMBEDDING_MODEL: "llama-server:my-model", EMBEDDING_MODEL: "my-model", LLAMA_SERVER_BASE_URL: "http://gw:1/v1", EMBEDDING_BASE_URL: "http://gw:1/v1" }));
+    expect(ws.filter((w) => w.kind === "conflict")).toEqual([]);
+  });
+
   test("原生变量（GBRAIN_* + LLAMA_SERVER_*）→ embedding/rerank true", () => {
     const st = modelConfigState(loadConfig({
       ...base,

@@ -56,6 +56,7 @@ export const configSchema = z.object({
   DEEPSEEK_API_KEY: z.string().default(""),
   ANTHROPIC_API_KEY: z.string().default(""),
   VOYAGE_API_KEY: z.string().default(""),
+  DASHSCOPE_API_KEY: z.string().default(""),
   CORS_ORIGINS: z.string().default("").refine((v) => {
     for (const entry of v.split(",").map((e) => e.trim()).filter(Boolean)) {
       if (entry === "*") continue;

@@ -21,16 +21,16 @@ map_env LLAMA_SERVER_RERANKER_BASE_URL RERANK_BASE_URL
 map_env LLAMA_SERVER_RERANKER_API_KEY  RERANK_API_KEY
 # 模型名：无 provider 前缀时自动补 llama-server:（该端点即 OpenAI 兼容网关）
 map_model() {
-  local g="$1" n="$2"
+  local g="$1" n="$2" provider="${3:-llama-server}"
   if [ -z "${!g:-}" ] && [ -n "${!n:-}" ]; then
     case "${!n}" in
       *:*) export "$g=${!n}" ;;
-      *)   export "$g=llama-server:${!n}" ;;
+      *)   export "$g=${provider}:${!n}" ;;
     esac
   fi
 }
-map_model GBRAIN_EMBEDDING_MODEL EMBEDDING_MODEL
-map_model GBRAIN_RERANKER_MODEL  RERANK_MODEL
+map_model GBRAIN_EMBEDDING_MODEL EMBEDDING_MODEL llama-server
+map_model GBRAIN_RERANKER_MODEL  RERANK_MODEL  llama-server-reranker
 
 
 

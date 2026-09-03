@@ -24,10 +24,17 @@ function embeddingModel(cfg: Config): string {
 export function modelConfigState(cfg: Config): ModelConfigState {
   const embModel = embeddingModel(cfg);
   const embDim = cfg.GBRAIN_EMBEDDING_DIMENSIONS || cfg.EMBEDDING_DIMENSIONS;
+  const rerankModel = cfg.GBRAIN_RERANKER_MODEL || cfg.RERANK_MODEL;
+  // rerank 就绪按 provider 形态判定：dashscope-rerank 走 DASHSCOPE_API_KEY（专用 recipe，
+  // 非 OpenAI 兼容端点别名）；llama-server-reranker/无前缀中立映射走 rerank 端点变量
+  const rerankReady =
+    rerankModel.length > 0 &&
+    (rerankModel.startsWith("dashscope-rerank:")
+      ? cfg.DASHSCOPE_API_KEY.length > 0
+      : (cfg.LLAMA_SERVER_RERANKER_BASE_URL || cfg.RERANK_BASE_URL).length > 0);
   return {
-    // embedding 就绪：模型已设，且（显式维度 或 OpenAI key 或 端点 URL）
     embedding: embModel.length > 0 && (embDim.length > 0 || embeddingEndpoint(cfg).length > 0 || cfg.OPENAI_API_KEY.length > 0),
-    rerank: (cfg.GBRAIN_RERANKER_MODEL || cfg.RERANK_MODEL).length > 0 && (cfg.LLAMA_SERVER_RERANKER_BASE_URL || cfg.RERANK_BASE_URL).length > 0,
+    rerank: rerankReady,
     chat: cfg.GBRAIN_CHAT_MODEL.length > 0,
   };
 }
@@ -53,6 +60,8 @@ export function validateModelConfig(cfg: Config): ModelWarning[] {
   ];
   for (const { native, neutral, nativeValue, neutralValue } of conflicts) {
     if (nativeValue && neutralValue && nativeValue !== neutralValue) {
+      // 派生等价（entrypoint 映射产物：原生 = "llama-server:" + 中立模型）不算冲突
+      if (native === "GBRAIN_EMBEDDING_MODEL" && neutral === "EMBEDDING_MODEL" && nativeValue === `llama-server:${neutralValue}`) continue;
       warnings.push({
         kind: "conflict",
         message: `${native} 与 ${neutral} 同时设置且值不同（${nativeValue} vs ${neutralValue}）；原生变量优先，请移除其一`,
