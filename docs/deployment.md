@@ -74,7 +74,81 @@ EOF
 | `JOB_MAX_ATTEMPTS` | 3 | 任务失败重试次数 |
 | `JOB_TIMEOUT_MS` | 600000 | 任务超时（docling 调用另受 110s 下限约束） |
 
-## 4. 数据持久化与备份
+## 4. LLM / Embedding / Rerank 模型配置
+
+gbrain 引擎的模型配置经环境变量透传（容器内 `gbrain init` / CLI / `serve` 统一读取）。**生效时机：首次 init 时写入引擎 schema 配置**；变更模型后需重跑 init（或引擎侧 `config set`）并 `gbrain embed --stale` 重索引（embedding 属 schema 级设置）。
+
+> 与 Docker Hub 的 `docker-gbrain` 封装不同：本项目镜像不做 provider 自动选择，直接透传以下变量——**显式设置**即生效。
+
+### 4.1 Chat / 扩展模型（可选，语义检索的 expansion 依赖）
+
+供多查询扩展（hybrid 的 `--expand`）、`think`、autopilot 等 LLM 能力使用。语法 `provider:model`：
+
+| 变量 | 示例 | 说明 |
+|---|---|---|
+| `GBRAIN_CHAT_MODEL` | `deepseek:deepseek-v4-flash`、`openai:gpt-4o`、`anthropic:claude-...` | 模型 id（provider:model） |
+| `DEEPSEEK_API_KEY` | `sk-...` | deepseek 系 key |
+| `OPENAI_API_KEY` | `sk-...` | openai 系 key |
+| `ANTHROPIC_API_KEY` | `sk-ant-...` | anthropic 系 key |
+
+未配置时：`keyword` 检索不受影响；`hybrid` 的多查询扩展降级、`think`/autopilot 不可用。
+
+### 4.2 Embedding（向量检索必需）
+
+| 变量 | 示例 | 说明 |
+|---|---|---|
+| `GBRAIN_EMBEDDING_MODEL` | `openai:text-embedding-3-large`、`llama-server:qwen3-embedding-4b` | 模型 id |
+| `GBRAIN_EMBEDDING_DIMENSIONS` | `3072` / `2560` | 维度，必须与模型匹配 |
+| `OPENAI_API_KEY` 或 `LLAMA_SERVER_BASE_URL`(+`LLAMA_SERVER_API_KEY`) | — | OpenAI 兼容端点（云端或本地 llama-server） |
+
+未配置时引擎以 `--no-embedding` 等效运行：向量检索不可用，检索降级（`degraded: ["embed_unavailable"]`），关键词检索仍可用；**后补配置后需 `gbrain embed --stale` 回填**。
+
+> 维度注意：llama-server 默认模型 2560d 超过 pgvector HNSW 索引上限（2000），引擎自动回退精确扫描（功能一致，超大语料更慢）。
+
+### 4.3 Rerank（可选，提升排序）
+
+| 变量 | 示例 | 说明 |
+|---|---|---|
+| `GBRAIN_RERANKER_MODEL` | `qwen3-reranker-0.6b` | 重排序模型 |
+| `LLAMA_SERVER_RERANKER_BASE_URL` | `http://<host>:28080/v1` | llama.cpp reranker 端点 |
+| `LLAMA_SERVER_RERANKER_API_KEY` | 可选 | 端点网关 key |
+
+### 4.4 两组完整示例
+
+```env
+# 云端：DeepSeek chat + OpenAI embedding
+GBRAIN_CHAT_MODEL=deepseek:deepseek-v4-flash
+DEEPSEEK_API_KEY=sk-...
+GBRAIN_EMBEDDING_MODEL=openai:text-embedding-3-large
+GBRAIN_EMBEDDING_DIMENSIONS=3072
+OPENAI_API_KEY=sk-...
+```
+
+```env
+# 本地：llama-server（embedding + reranker，数据不出机）+ DeepSeek chat
+GBRAIN_CHAT_MODEL=deepseek:deepseek-v4-flash
+DEEPSEEK_API_KEY=sk-...
+LLAMA_SERVER_BASE_URL=http://<host>:28080/v1
+LLAMA_SERVER_API_KEY=...
+GBRAIN_EMBEDDING_MODEL=llama-server:qwen3-embedding-4b
+GBRAIN_EMBEDDING_DIMENSIONS=2560
+GBRAIN_RERANKER_MODEL=qwen3-reranker-0.6b
+LLAMA_SERVER_RERANKER_BASE_URL=http://<host>:28080/v1
+LLAMA_SERVER_RERANKER_API_KEY=...
+```
+
+### 4.5 验证
+
+```bash
+# 模型是否被引擎识别（container 内）
+docker compose exec gbrain-rag gbrain config show | grep -E 'embedding|rerank|chat'
+# 检索是否降级（响应 degraded 字段为空 = 向量可用）
+curl -s -X POST .../v1/kb/$KB/retrieval -d '{"query":"测试"}' | jq .degraded
+# 引擎健康总检
+docker compose exec gbrain-rag gbrain doctor
+```
+
+## 5. 数据持久化与备份
 
 - `postgres` 数据卷：引擎页面/索引/凭证——**主数据**
 - `DATA_DIR`（/data/rag）：每个 KB 的 git 目录 + 导入原始文档档案
@@ -83,7 +157,7 @@ EOF
   - 卷快照（DATA_DIR 含 git 历史，可经 `git push` 异地备份）
 - 删除知识库为两阶段：`DELETE /v1/kb/:id` 归档（72h 保留）→ `POST /v1/kb/:id/purge?force=true` 永久清除
 
-## 5. 健康检查与监控
+## 6. 健康检查与监控
 
 `GET /health` 字段：
 
@@ -98,7 +172,7 @@ EOF
 
 结构化日志（stdout JSON）：`evt` 事件含 `listening`/`migrate`/`supervisor`/`job_error`/`retrieval_fallback`/`internal_client` 等；任务记录含 `parser_log`（解析路径与回退链）。
 
-## 6. 升级
+## 7. 升级
 
 ```bash
 cd deploy
@@ -110,13 +184,13 @@ docker compose up -d --build
 - gbrain 引擎版本在 Dockerfile 固定（`garrytan/gbrain` tag），升级即改该处重建
 - 破坏性配置变更（如 embedding provider 切换）需 `gbrain embed --stale` 重索引（引擎侧）
 
-## 7. 安全注意
+## 8. 安全注意
 
 > **URL 导入不做地址校验**（设计取舍，spec FR-013）：服务必须部署在受信隔离网络；如需公网暴露，先收紧 URL 导入策略。
 > 管理面 `ADMIN_TOKEN` 与租户密钥（`gbrag_...`）均为高权限凭证：密钥明文仅在签发响应出现一次，泄漏需立即 `DELETE /v1/keys/:id` 吊销。
 > 托管 OCR / 外部 docling 可能使文档离开本机——默认关闭/按配置启用。
 
-## 8. 故障排查
+## 9. 故障排查
 
 | 现象 | 排查 |
 |---|---|
