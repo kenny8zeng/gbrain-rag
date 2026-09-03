@@ -108,30 +108,55 @@ gbrain 引擎的模型配置经环境变量透传（容器内 `gbrain init` / CL
 
 未配置时：`keyword` 检索不受影响；`hybrid` 的多查询扩展降级、`think`/autopilot 不可用。
 
-### 4.2 Embedding（向量检索必需）
-
-| 变量 | 示例 | 说明 |
-|---|---|---|
-| `GBRAIN_EMBEDDING_MODEL` | `openai:text-embedding-3-large`、`llama-server:qwen3-embedding-4b` | 模型 id |
-| `GBRAIN_EMBEDDING_DIMENSIONS` | `3072` / `2560` | 维度，必须与模型匹配 |
-| `OPENAI_API_KEY` 或 `LLAMA_SERVER_BASE_URL`(+`LLAMA_SERVER_API_KEY`) | — | OpenAI 兼容端点（云端或本地 llama-server） |
-
-未配置时引擎以 `--no-embedding` 等效运行：向量检索不可用，检索降级（`degraded: ["embed_unavailable"]`），关键词检索仍可用；**后补配置后需 `gbrain embed --stale` 回填**。
-
-> 维度注意：llama-server 默认模型 2560d 超过 pgvector HNSW 索引上限（2000），引擎自动回退精确扫描（功能一致，超大语料更慢）。
-
-### 4.3 Rerank（可选，提升排序）
-
-| 变量 | 示例 | 说明 |
-|---|---|---|
-| `GBRAIN_RERANKER_MODEL` | `qwen3-reranker-0.6b` | 重排序模型 |
-| `LLAMA_SERVER_RERANKER_BASE_URL` | `http://<host>:28080/v1` | llama.cpp reranker 端点 |
-| `LLAMA_SERVER_RERANKER_API_KEY` | 可选 | 端点网关 key |
-
-### 4.4 两组完整示例
+### 4.2 Embedding（向量检索必需）——中立变量主路径
 
 ```env
-# 云端：DeepSeek chat + OpenAI embedding
+# 任意 OpenAI 兼容网关（litellm/one-api/自建聚合/llama-server 皆可）
+EMBEDDING_BASE_URL=http://<gateway>:8080/v1
+EMBEDDING_MODEL=qwen3-embedding-4b      # 无前缀自动补 llama-server:（该端点即网关）
+EMBEDDING_DIMENSIONS=2560               # 维度是模型资产，必须与模型匹配
+EMBEDDING_API_KEY=...                   # 网关 key（可选）
+```
+
+未配置时引擎以 `--no-embedding` 等效运行（另有内置免费默认，见上注）：向量检索不可用、检索 `degraded: ["embed_unavailable"]`、关键词仍可用；**后补配置后需 `gbrain embed --stale` 回填**。
+
+> 维度注意：2560d 模型超过 pgvector HNSW 索引上限（2000），引擎自动回退精确扫描（功能一致，超大语料更慢）。
+
+### 4.3 Rerank（可选，提升排序）——中立变量主路径
+
+```env
+# 仅兼容实现 rerank API 的端点（OpenAI 原生无 rerank；llama-server/zeroentropyai 等网关可用）
+RERANK_BASE_URL=http://<gateway>:8080/v1
+RERANK_MODEL=qwen3-reranker-0.6b
+RERANK_API_KEY=...                      # 可选
+```
+
+### 4.4 原生变量（高级/兼容）
+
+中立变量映射的底层即以下 gbrain 原生命名——直连云端供应商（非网关）时使用：
+
+| 用途 | 变量 |
+|---|---|
+| Chat/扩展 | `GBRAIN_CHAT_MODEL`（provider:model）+ `DEEPSEEK_API_KEY`/`OPENAI_API_KEY`/`ANTHROPIC_API_KEY` |
+| Embedding 直连 | `GBRAIN_EMBEDDING_MODEL=openai:text-embedding-3-large` + `GBRAIN_EMBEDDING_DIMENSIONS=3072` + `OPENAI_API_KEY` |
+| Embedding 网关 | `GBRAIN_EMBEDDING_MODEL=llama-server:...` + `LLAMA_SERVER_BASE_URL`/`LLAMA_SERVER_API_KEY` |
+| Rerank | `GBRAIN_RERANKER_MODEL` + `LLAMA_SERVER_RERANKER_BASE_URL`/`_API_KEY` |
+
+### 4.5 完整示例
+
+```env
+# 网关模式（供应商中立；embedding + rerank 同一网关）+ DeepSeek chat
+GBRAIN_CHAT_MODEL=deepseek:deepseek-v4-flash
+DEEPSEEK_API_KEY=sk-...
+EMBEDDING_BASE_URL=http://<gateway>:8080/v1
+EMBEDDING_MODEL=qwen3-embedding-4b
+EMBEDDING_DIMENSIONS=2560
+RERANK_BASE_URL=http://<gateway>:8080/v1
+RERANK_MODEL=qwen3-reranker-0.6b
+```
+
+```env
+# 云端直连（原生变量；chat 同供应商或独立）
 GBRAIN_CHAT_MODEL=deepseek:deepseek-v4-flash
 DEEPSEEK_API_KEY=sk-...
 GBRAIN_EMBEDDING_MODEL=openai:text-embedding-3-large
@@ -139,20 +164,7 @@ GBRAIN_EMBEDDING_DIMENSIONS=3072
 OPENAI_API_KEY=sk-...
 ```
 
-```env
-# 本地：llama-server（embedding + reranker，数据不出机）+ DeepSeek chat
-GBRAIN_CHAT_MODEL=deepseek:deepseek-v4-flash
-DEEPSEEK_API_KEY=sk-...
-LLAMA_SERVER_BASE_URL=http://<host>:28080/v1
-LLAMA_SERVER_API_KEY=...
-GBRAIN_EMBEDDING_MODEL=llama-server:qwen3-embedding-4b
-GBRAIN_EMBEDDING_DIMENSIONS=2560
-GBRAIN_RERANKER_MODEL=qwen3-reranker-0.6b
-LLAMA_SERVER_RERANKER_BASE_URL=http://<host>:28080/v1
-LLAMA_SERVER_RERANKER_API_KEY=...
-```
-
-### 4.5 验证
+### 4.6 验证
 
 ```bash
 # 模型是否被引擎识别（container 内）
