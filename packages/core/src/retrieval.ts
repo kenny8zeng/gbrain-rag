@@ -6,7 +6,7 @@ export interface RetrievalHit {
   title: string;
   snippet: string;
   score: number;
-  sourceId: string | null;
+  source_id: string | null;
 }
 
 export interface RetrievalResponse {
@@ -39,7 +39,7 @@ export function normalizeHits(raw: RawHit[]): RetrievalHit[] {
     title: str(h.title, str(h.slug)),
     snippet: str(h.chunk_text, str(h.text, str(h.snippet))).slice(0, 2000),
     score: num(h.score),
-    sourceId: str(h.source_id) || null,
+    source_id: str(h.source_id) || null,
   }));
 }
 

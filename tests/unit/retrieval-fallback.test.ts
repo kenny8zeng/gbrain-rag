@@ -53,7 +53,7 @@ describe("InternalRetrieval.retrieve（serve 通道）", () => {
     const r = await serve.retrieve("kb-12345678", INPUT);
     expect(r.results.length).toBe(1);
     expect(r.results[0]!.slug).toBe("serve-slug");
-    expect(r.results[0]!.sourceId).toBe("kb-12345678");
+    expect(r.results[0]!.source_id).toBe("kb-12345678");
     expect(r.mode).toBe("keyword");
   });
 

@@ -69,6 +69,8 @@ gated("US2+US4: 导入与检索", () => {
     ).json();
     expect(hit.results.length).toBeGreaterThan(0);
     expect(String(hit.results[0]?.slug ?? "")).toContain(`${kb}/docs/`);
+    // 响应形状契约：source_id（snake_case，对齐 OpenAPI schema）——实现与 schema 漂移守护
+    expect(String(hit.results[0]?.source_id ?? "")).toContain(`${kb}/docs/`);
     expect(typeof hit.results[0].score).toBe("number");
 
     // 重复导入 → updated（FR-008）
