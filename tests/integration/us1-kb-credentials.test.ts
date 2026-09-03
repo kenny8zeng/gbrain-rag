@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 
 /**
  * 集成测试 US1：建库 → 发凭证（写 A 读 A,B）→ 越权 403 → rescope 即时生效 → 吊销 401。
@@ -9,14 +9,19 @@ const ADMIN = process.env.ADMIN_TOKEN ?? "";
 const adminHeaders = () => ({ Authorization: `Bearer ${ADMIN}`, "Content-Type": "application/json" });
 
 const gated = BASE && ADMIN ? describe : describe.skip;
+const createdKbs: string[] = [];
+const createdKeyIds: string[] = [];
 
 async function createKb(name: string): Promise<string> {
   const r = await fetch(`${BASE}/v1/kb`, { method: "POST", headers: adminHeaders(), body: JSON.stringify({ name }) });
   expect(r.status).toBe(201);
-  return (await r.json()).id;
+  const id = (await r.json()).id as string;
+  createdKbs.push(id);
+  return id;
 }
 
 async function issueKey(label: string, writeKb: string | null, readKbs: string[]): Promise<{ id: string; key: string }> {
+  createdKeyIds.length = 0;
   const r = await fetch(`${BASE}/v1/keys`, {
     method: "POST",
     headers: adminHeaders(),
@@ -88,4 +93,18 @@ gated("US1: 建库与授权", () => {
     });
     expect(afterRevoke.status).toBe(401);
   });
+});
+
+// C2：测试残留清理——归档本文件创建的 KB（key 已在场景内吊销；兜底吊销）
+afterAll(async () => {
+  for (const kid of createdKbs) {
+    await fetch(`${BASE}/v1/kb/${kid}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+      body: JSON.stringify({ force: true }),
+    }).catch(() => undefined);
+  }
+  for (const id of createdKeyIds) {
+    await fetch(`${BASE}/v1/keys/${id}`, { method: "DELETE", headers: adminHeaders() }).catch(() => undefined);
+  }
 });

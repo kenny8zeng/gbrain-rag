@@ -254,10 +254,3 @@ docker compose up -d --build
 | 429 集中出现 | MCP 逐密钥并发上限或代理 maxConcurrency（管理面） |
 | 升级后既有页面检索异常 | 引擎版本/索引变更——检查 `gbrain doctor`、必要时 `gbrain embed --stale` |
 
-## 10. Zeabur 部署注意事项（实测）
-
-- 服务端口声明必须为 **HTTP 类型**（`type: HTTP`）才能绑定域名——TCP 类型时域名按钮禁用且无提示（实测：NOT_HTTP_PORT）
-- 免费域名（`*.zeabur.app`）绑定后**端口转发可关闭**（DISABLED），域名经网关独立工作（docling 同构验证）
-- 服务间互访：同环境服务用 `service-<id>:<port>`（端口转发 ENABLED）或 `<dns>.zeabur.internal:<port>`（无需转发）；域名入口经 Zeabur 网关
-- 生产 Postgres 需 **pgvector 扩展**：Zeabur 市场 postgres 无 vector，需自建 `pgvector/pgvector:pg16` 镜像服务
-- 镜像更新：GraphQL `updateServiceImageTag`（tag 变更触发滚动部署）；变量变更后需 restart 注入（prebuilt 无法 redeploy）
