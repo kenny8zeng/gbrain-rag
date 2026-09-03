@@ -18,9 +18,11 @@
 
 | 平面 | 鉴权 | 覆盖 |
 |---|---|---|
-| 管理面 | `Authorization: Bearer $ADMIN_TOKEN` | 知识库生命周期、凭证签发/变更/吊销、任务查询、引擎运维代理 |
+| 管理面 | `Authorization: Bearer $ADMIN_TOKEN` | 知识库生命周期、凭证签发/变更/吊销、任务查询、模型配置、引擎运维代理 |
 | 租户面 | `X-API-Key: gbrag_...` | 导入、页面管理、检索、任务状态 |
 | 公开 | 无 | 健康检查、OpenAPI 文档、Swagger UI、MCP 端点（X-API-Key 鉴权） |
+
+> 管理面（含 `/v1/admin/gbrain/*` 引擎代理）覆盖**破坏性运维**（purge/吊销/引擎级删除——引擎 CLI 自带确认语义）。`ADMIN_TOKEN` 即全权凭证：高强度随机、仅部署者持有、定期轮换；破坏性操作不在服务层二次确认（信任边界 = 管理面本身）。
 
 ### 管理面
 
@@ -31,6 +33,7 @@
 | `POST /v1/keys` · `PATCH/DELETE /v1/keys/:id` · `GET /v1/keys` | 签发（明文仅一次）/变更授权（即时生效）/吊销/列表 |
 | `GET /v1/jobs` · `/v1/jobs/:id` | 任务列表（kb/status 过滤）/详情 |
 | `/v1/admin/gbrain/*` | gbrain 引擎全量运维（55 路由；SSE 流式，只读状态路由支持 `?format=json`） |
+| `/v1/admin/models` | 模型配置装配（POST 预检+config set 装配 / GET 状态聚合） |
 
 ### 租户面
 

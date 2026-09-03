@@ -74,6 +74,53 @@ describe("McpGateway 鉴权与并发", () => {
     expect(res1.status).toBe(200);
   });
 
+  test("凭证无上游 client（OAuth 缺失）→ 401", async () => {
+    const gw = new McpGateway({
+      baseUrl: "http://127.0.0.1:7333",
+      upstream: { proxy: async () => new Response("unreachable") } as unknown as Upstream,
+      lookup: async () => keyRow({ clientId: null, clientSecret: null }),
+    });
+    const res = await gw.handle(mcpReq());
+    expect(res.status).toBe(401);
+    expect((await res.json()).error.message).toContain("no upstream client");
+  });
+
+  test("有效凭证 → 注入上游 client 凭证并代理到 /mcp", async () => {
+    let captured: { path: string; creds: { clientId: string; clientSecret: string } } | null = null;
+    const gw = new McpGateway({
+      baseUrl: "http://127.0.0.1:7333",
+      upstream: {
+        proxy: async (path: string, creds: { clientId: string; clientSecret: string }, _req: Request) => {
+          captured = { path, creds };
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        },
+      } as unknown as Upstream,
+      lookup: async () => keyRow(),
+    });
+    const res = await gw.handle(mcpReq());
+    expect(res.status).toBe(200);
+    expect(captured?.path).toBe("/mcp");
+    expect(captured?.creds).toEqual({ clientId: "gbrain_cl_t", clientSecret: "gbrain_cs_t" });
+  });
+
+  test("上游异常 → 并发槽释放（后续请求可进入）", async () => {
+    let calls = 0;
+    const gw = new McpGateway({
+      baseUrl: "http://127.0.0.1:7333",
+      upstream: {
+        proxy: async () => {
+          calls++;
+          if (calls === 1) throw new Error("upstream boom");
+          return new Response("ok", { status: 200 });
+        },
+      } as unknown as Upstream,
+      lookup: async () => keyRow({ concurrency: 1 }),
+    });
+    await expect(gw.handle(mcpReq())).rejects.toThrow("upstream boom");
+    const res = await gw.handle(mcpReq());
+    expect(res.status).toBe(200);
+  });
+
   test("并发释放后新请求放行", async () => {
     const upstream = { token: async () => "t", proxy: async () => new Response("{}", { status: 200 }) } as unknown as Upstream;
     const gw = new McpGateway({ baseUrl: "http://x", upstream, lookup: async () => keyRow({ concurrency: 1 }) });
