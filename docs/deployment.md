@@ -78,6 +78,19 @@ EOF
 
 gbrain 引擎的模型配置经环境变量透传（容器内 `gbrain init` / CLI / `serve` 统一读取）。**生效时机：首次 init 时写入引擎 schema 配置**；变更模型后需重跑 init（或引擎侧 `config set`）并 `gbrain embed --stale` 重索引（embedding 属 schema 级设置）。
 
+**供应商中立三件套**（推荐）：配置面只认"端点 + 模型 + 维度"，由 entrypoint 自动映射为引擎约定变量（原生 gbrain 变量优先，并存冲突时启动日志警告）：
+
+| 中立变量 | 映射到 | 说明 |
+|---|---|---|
+| `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` | `LLAMA_SERVER_BASE_URL` / `_API_KEY` | OpenAI 兼容网关（litellm/one-api/llama-server 等皆可） |
+| `EMBEDDING_MODEL` | `GBRAIN_EMBEDDING_MODEL` | 无 `provider:` 前缀自动补 `llama-server:`（该端点即网关） |
+| `EMBEDDING_DIMENSIONS` | `GBRAIN_EMBEDDING_DIMENSIONS` | 维度是模型资产，必须匹配 |
+| `RERANK_BASE_URL` / `RERANK_API_KEY` / `RERANK_MODEL` | `LLAMA_SERVER_RERANKER_*` / `GBRAIN_RERANKER_MODEL` | 同上（rerank 仅兼容实现 rerank 的端点） |
+
+原生变量（`GBRAIN_CHAT_MODEL` 等）继续直接可用；两者并存且值不同 → 原生优先 + 启动警告。模型配置状态与预检警告（冲突/缺维度/维度错配）在启动日志（`evt: model_config` / `model_config_warning`），启动后自动跑一次 `gbrain models doctor` 探活（`evt: models_doctor`）。
+
+> 注：`/health.models` 表达**用户显式配置就绪**状态；引擎可能另有内置默认（如 zeroentropyai 免费 embedding），实际可用性以 `models_doctor` 日志为准。
+
 > 与 Docker Hub 的 `docker-gbrain` 封装不同：本项目镜像不做 provider 自动选择，直接透传以下变量——**显式设置**即生效。
 >
 > **供应商中立性说明**：embedding/rerank 的接入通道是 **OpenAI 兼容抽象**（gbrain 的 `openai-compatible` provider 族）——`LLAMA_SERVER_BASE_URL`/`LLAMA_SERVER_RERANKER_BASE_URL` 只是 gbrain 沿用的端点别名，**指向任意 OpenAI 兼容网关（litellm、one-api、自建聚合等）同样有效**，`gbrain models doctor` 会探测端点真实类别。示例落在 OpenAI 与 llama-server 两家是因为：embedding 的模型维度/名称是供应商资产（语法需 `provider:model` 前缀）；rerank 无统一标准（OpenAI 不提供 rerank API），仅实现了兼容 rerank 的端点（llama-server、zeroentropyai 等）可接。

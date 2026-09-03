@@ -8,6 +8,7 @@ import type { AdminProxy } from "@core/admin-proxy";
 import { handleAdminRequest } from "@core/admin-proxy";
 import type { KeyRow } from "@core/credentials";
 import type { RetrievalInput, RetrievalResponse } from "@core/retrieval";
+import type { ModelConfigState } from "@core/model-config";
 import { requireAdmin, requireTenant, type Env } from "./middleware/auth";
 import { registerSystemRoutes } from "./openapi/routes/system";
 import { registerTenantRoutes } from "./openapi/routes/tenant";
@@ -25,6 +26,7 @@ export interface Services {
   lookupKey: (hash: string) => Promise<KeyRow | null>;
   serveReady: () => boolean;
   doclingOk: () => Promise<boolean>;
+  modelState: ModelConfigState;
   submitJob: (input: { kbId: string; type: "file" | "url" | "md"; sourceRef: string; title?: string | null }) => Promise<{ id: string; status: string }>;
   retrieve: (kbId: string, input: RetrievalInput) => Promise<RetrievalResponse>;
   onKbCreated: (kbId: string) => Promise<void>;

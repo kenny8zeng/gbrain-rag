@@ -25,6 +25,14 @@ export const configSchema = z.object({
   JOB_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(104_857_600),
   /** 跨域来源列表（逗号分隔；空=关闭；* = 显式全放行） */
+  // ---- 供应商中立模型配置（映射为 gbrain 透传变量，见 entrypoint.sh / docs/deployment.md §4）----
+  EMBEDDING_BASE_URL: z.string().default(""),
+  EMBEDDING_MODEL: z.string().default(""),
+  EMBEDDING_DIMENSIONS: z.string().default(""),
+  EMBEDDING_API_KEY: z.string().default(""),
+  RERANK_BASE_URL: z.string().default(""),
+  RERANK_MODEL: z.string().default(""),
+  RERANK_API_KEY: z.string().default(""),
   /** 解析器模式：auto=按 DOCLING_URL（默认）| anydoc | docling */
   PARSER_MODE: z.enum(["auto", "anydoc", "docling"]).default("auto"),
   /** 双解析器并存时的首选（docling 配置时生效）：docling | anydoc */
@@ -35,6 +43,19 @@ export const configSchema = z.object({
     .default("off")
     .transform((v) => v === "on" || v === "true"),
   FIRECRAWL_API_KEY: z.string().default(""),
+  // ---- gbrain 模型透传变量（原生命名；与中立变量映射共存，见 entrypoint.sh / model-config.ts）----
+  GBRAIN_CHAT_MODEL: z.string().default(""),
+  GBRAIN_EMBEDDING_MODEL: z.string().default(""),
+  GBRAIN_EMBEDDING_DIMENSIONS: z.string().default(""),
+  GBRAIN_RERANKER_MODEL: z.string().default(""),
+  LLAMA_SERVER_BASE_URL: z.string().default(""),
+  LLAMA_SERVER_API_KEY: z.string().default(""),
+  LLAMA_SERVER_RERANKER_BASE_URL: z.string().default(""),
+  LLAMA_SERVER_RERANKER_API_KEY: z.string().default(""),
+  OPENAI_API_KEY: z.string().default(""),
+  DEEPSEEK_API_KEY: z.string().default(""),
+  ANTHROPIC_API_KEY: z.string().default(""),
+  VOYAGE_API_KEY: z.string().default(""),
   CORS_ORIGINS: z.string().default("").refine((v) => {
     for (const entry of v.split(",").map((e) => e.trim()).filter(Boolean)) {
       if (entry === "*") continue;

@@ -36,6 +36,7 @@ export function registerSystemRoutes(app: OpenAPIHono<Env>, svc: Services): void
         parser_mode: resolveParserFor(svc.cfg).mode,
         parser_primary: resolveParserFor(svc.cfg).mode,
         parser_preference: svc.cfg.PARSER_PREFERENCE,
+        models: { embedding: svc.modelState.embedding, rerank: svc.modelState.rerank, chat: svc.modelState.chat },
       },
       ok ? 200 : 503,
     );

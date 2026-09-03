@@ -7,6 +7,7 @@ import { lookupKeyByHash } from "@core/credentials";
 import { processIngestJob } from "@core/ingest/pipeline";
 import { retrieveWithFallback } from "@core/retrieval";
 import { InternalRetrieval } from "@core/retrieval-serve";
+import { modelConfigState, validateModelConfig } from "@core/model-config";
 import { createApp, type Services } from "./app";
 import { startSupervisor } from "./supervisor";
 import { startWorker } from "./worker";
@@ -19,11 +20,35 @@ async function main(): Promise<void> {
   const applied = await migrate(db, cfg.MIGRATIONS_DIR);
   console.log(JSON.stringify({ evt: "migrate", applied }));
 
+  // 模型配置预检与状态（A/B/C：只警告不自动改；维度属引擎 schema 级）
+  for (const w of validateModelConfig(cfg)) {
+    console.log(JSON.stringify({ evt: "model_config_warning", kind: w.kind, message: w.message }));
+  }
+  const modelState = modelConfigState(cfg);
+  console.log(JSON.stringify({ evt: "model_config", embedding: modelState.embedding, rerank: modelState.rerank, chat: modelState.chat }));
+
   const supervisor = startSupervisor(cfg);
   // 等 serve 就绪（不阻塞启动，/health 会如实降级）
   await new Promise((r) => setTimeout(r, 500));
 
   const upstream = new Upstream(`http://127.0.0.1:${cfg.GBRAIN_SERVE_PORT}`);
+
+  // B：启动诊断——models doctor 探活（非阻塞，失败仅日志；端点类别/凭证/模型判定交给引擎工具）
+  void (async () => {
+    await new Promise((r) => setTimeout(r, 3_000)); // 让 supervisor 先就绪
+    try {
+      const proc = Bun.spawn([cfg.GBRAIN_BIN, "models", "doctor"], {
+        env: { ...process.env } as Record<string, string>,
+        stdin: "ignore", stdout: "pipe", stderr: "pipe",
+        signal: AbortSignal.timeout(20_000),
+      });
+      const out = await new Response(proc.stdout as ReadableStream).text();
+      const summary = out.trim().split("\n").filter((l) => /[✔✗]|reachable|fail/i.test(l)).slice(-3).join(" | ");
+      console.log(JSON.stringify({ evt: "models_doctor", summary: summary.slice(0, 400) }));
+    } catch (e) {
+      console.log(JSON.stringify({ evt: "models_doctor", error: (e as Error).message.slice(0, 200) }));
+    }
+  })();
   const gateway = new McpGateway({
     baseUrl: `http://127.0.0.1:${cfg.GBRAIN_SERVE_PORT}`,
     upstream,
@@ -50,6 +75,7 @@ async function main(): Promise<void> {
     adminProxy,
     lookupKey: (hash) => lookupKeyByHash(db, hash),
     serveReady: () => supervisor.ready(),
+    modelState,
     doclingOk: doclingProbe(cfg.DOCLING_URL),
     submitJob,
     retrieve: (kbId, input) =>
