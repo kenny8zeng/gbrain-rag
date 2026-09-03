@@ -71,6 +71,24 @@ bun test tests/integration          # 集成全链路（需 compose 栈）
 
 ## 文档
 
+### 快速上手
+
+| 文档 | 内容 |
+|---|---|
+| [docs/deployment.md](docs/deployment.md) | **部署说明**：架构/环境变量全表/持久化与备份/升级/故障排查 |
+| [docs/usage.md](docs/usage.md) | **使用介绍**：概念模型/接口平面/导入与检索/MCP/错误码速查 |
+| [docs/examples.md](docs/examples.md) | **使用示例**：完整可复制会话（建库→发凭证→导入→检索→权限→删除） |
+
+### API 与契约
+
+| 地址/文档 | 内容 |
+|---|---|
+| `GET /docs` | Swagger UI 交互文档（服务 + 引擎代理，可在线执行） |
+| `GET /openapi.json` | 服务接口 OpenAPI 描述 |
+| [specs/](specs/) | 特性 spec/plan/tasks（001 核心、002 CORS、003 OpenAPI、004 anydoc、005 解析优先级） |
+
+### 工程与社区
+
 | 文档 | 内容 |
 |---|---|
 | [docs/testing-strategy.md](docs/testing-strategy.md) | 测试方案：缺陷台账、金字塔门禁、四实例矩阵 |
@@ -78,7 +96,6 @@ bun test tests/integration          # 集成全链路（需 compose 栈）
 | [CHANGELOG.md](CHANGELOG.md) | 变更日志（Keep a Changelog） |
 | [SECURITY.md](SECURITY.md) | 安全策略与漏洞报告 |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 贡献者公约 |
-| `specs/` | 特性 spec/plan/tasks（speckit 工作流：001 核心、002 CORS、003 OpenAPI、004 anydoc、005 解析优先级） |
 
 ## 发布镜像（GitHub Actions）
 
