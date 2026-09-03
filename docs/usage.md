@@ -101,4 +101,6 @@ POST /v1/kb/{id}/retrieval
 | RATE_LIMITED | 429 | 并发超限 |
 | INTERNAL | 500 | 服务端错误（日志含详情） |
 
+**删除语义**：`DELETE /v1/kb/:id` → 200 `{"status":"archived"}`（**归档非物理删除**，72h 保留可恢复）；物理清除走 `POST /v1/kb/:id/purge`（有引用凭证时 `?force=true` 联动吊销）。凭证吊销后 401（`invalid api key`），与"凭证不存在"同响应（不泄露存在性）。
+
 完整契约与示例见 [examples.md](examples.md) 与 [部署说明](deployment.md)。
