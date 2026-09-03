@@ -86,12 +86,12 @@ describe("McpGateway 鉴权与并发", () => {
   });
 
   test("有效凭证 → 注入上游 client 凭证并代理到 /mcp", async () => {
-    let captured: { path: string; creds: { clientId: string; clientSecret: string } } | null = null;
+    const calls: Array<{ path: string; creds: { clientId: string; clientSecret: string } }> = [];
     const gw = new McpGateway({
       baseUrl: "http://127.0.0.1:7333",
       upstream: {
         proxy: async (path: string, creds: { clientId: string; clientSecret: string }, _req: Request) => {
-          captured = { path, creds };
+          calls.push({ path, creds });
           return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
         },
       } as unknown as Upstream,
@@ -99,8 +99,9 @@ describe("McpGateway 鉴权与并发", () => {
     });
     const res = await gw.handle(mcpReq());
     expect(res.status).toBe(200);
-    expect(captured?.path).toBe("/mcp");
-    expect(captured?.creds).toEqual({ clientId: "gbrain_cl_t", clientSecret: "gbrain_cs_t" });
+    expect(calls.length).toBe(1);
+    expect(calls[0]!.path).toBe("/mcp");
+    expect(calls[0]!.creds).toEqual({ clientId: "gbrain_cl_t", clientSecret: "gbrain_cs_t" });
   });
 
   test("上游异常 → 并发槽释放（后续请求可进入）", async () => {

@@ -104,7 +104,7 @@ export class InternalRetrieval {
 
     const text = await mcpToolsCall(this.cfg, this.upstream, creds, tool, args);
     const parsed = JSON.parse(text) as Array<Record<string, unknown>>;
-    const hits = normalizeHits(Array.isArray(parsed) ? parsed : []);
+    const hits = normalizeHits(Array.isArray(parsed) ? parsed : []).map((h) => ({ ...h, source_id: kbId }));
     return { results: hits, mode, degraded: [] };
   }
 }

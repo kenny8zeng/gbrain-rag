@@ -89,5 +89,6 @@ export async function retrieve(
   const degraded = !Array.isArray(j) && Array.isArray((j as RawQueryOutput).degraded)
     ? ((j as RawQueryOutput).degraded as unknown[]).map(String)
     : [];
-  return { results: normalizeHits(arr), mode, degraded };
+  const hits = normalizeHits(arr).map((h) => ({ ...h, source_id: kbId }));
+  return { results: hits, mode, degraded };
 }
