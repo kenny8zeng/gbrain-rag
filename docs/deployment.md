@@ -95,6 +95,30 @@ gbrain 引擎的模型配置经环境变量透传（容器内 `gbrain init` / CL
 >
 > **供应商中立性说明**：embedding/rerank 的接入通道是 **OpenAI 兼容抽象**（gbrain 的 `openai-compatible` provider 族）——`LLAMA_SERVER_BASE_URL`/`LLAMA_SERVER_RERANKER_BASE_URL` 只是 gbrain 沿用的端点别名，**指向任意 OpenAI 兼容网关（litellm、one-api、自建聚合等）同样有效**，`gbrain models doctor` 会探测端点真实类别。示例落在 OpenAI 与 llama-server 两家是因为：embedding 的模型维度/名称是供应商资产（语法需 `provider:model` 前缀）；rerank 无统一标准（OpenAI 不提供 rerank API），仅实现了兼容 rerank 的端点（llama-server、zeroentropyai 等）可接。
 
+### 4.0 模型配置心智模型（先读）
+
+配置语法 `provider:model`（如 `dashscope-rerank:qwen3-rerank`）由**两层独立结构**配对而成：
+
+**第一层——通道（recipe，供应商/接入方式）**：决定连接方式与使用的 key。
+- **专用通道**：`openai`、`anthropic`、`deepseek`、`dashscope`、`dashscope-rerank`、`openrouter`、`voyage`、`zeroentropyai` 等——引擎内建，各自声明 key 变量（如 `DASHSCOPE_API_KEY`、`OPENROUTER_API_KEY`）与默认端点。
+- **通用兼容通道（别名）**：`llama-server`、`llama-server-reranker`、`litellm`、`ollama`——**无模型认证清单**，可指向任意 OpenAI 兼容端点并透传任意模型名。本项目的中立三件套（`EMBEDDING_*`/`RERANK_*`）即映射到此通道。
+
+**第二层——模型认证清单**：挂在"某通道的某能力"下（chat / embedding / rerank 各自独立）。
+- **清单非空 → 强制校验**：模型不在清单内，该通道直接拒绝（错误信息含可用模型列表）。
+- **清单为空（别名通道）→ 任意模型透传**。
+
+**实用推论（对应本项目实际配置）**：
+
+| 组合 | 为什么可用/不可用 |
+|---|---|
+| `dashscope:qwen3.7-text-embedding` ✗ | dashscope 的 embedding 认证清单仅 `text-embedding-v3`/`v2` |
+| `llama-server:qwen3.7-text-embedding` ✓（生产现状） | 别名通道无清单，指向 dashscope 兼容端点即可 |
+| `dashscope-rerank:qwen3-rerank` ✓ | dashscope-rerank 的 rerank 清单含 `qwen3-rerank` |
+| `openrouter:cohere/rerank-v3.5` ✓ | openrouter 的 rerank 清单含 cohere 系 |
+| `openrouter:openai/text-embedding-3-small` ✓ | openrouter 的 embedding 清单（窄） |
+
+**换供应商的检查顺序**：① 目标通道是否提供该能力 → ② 模型是否在该能力认证清单（报错会列出）→ ③ 该通道的 key 变量 → ④ embedding 换模型另需核对维度与全量重索引。各通道认证清单以 `gbrain models doctor` 与实际报错为准（引擎内建，随版本演进）。
+
 ### 4.1 Chat / 扩展模型（可选，语义检索的 expansion 依赖）
 
 供多查询扩展（hybrid 的 `--expand`）、`think`、autopilot 等 LLM 能力使用。语法 `provider:model`：
