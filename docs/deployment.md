@@ -79,6 +79,8 @@ EOF
 gbrain 引擎的模型配置经环境变量透传（容器内 `gbrain init` / CLI / `serve` 统一读取）。**生效时机：首次 init 时写入引擎 schema 配置**；变更模型后需重跑 init（或引擎侧 `config set`）并 `gbrain embed --stale` 重索引（embedding 属 schema 级设置）。
 
 > 与 Docker Hub 的 `docker-gbrain` 封装不同：本项目镜像不做 provider 自动选择，直接透传以下变量——**显式设置**即生效。
+>
+> **供应商中立性说明**：embedding/rerank 的接入通道是 **OpenAI 兼容抽象**（gbrain 的 `openai-compatible` provider 族）——`LLAMA_SERVER_BASE_URL`/`LLAMA_SERVER_RERANKER_BASE_URL` 只是 gbrain 沿用的端点别名，**指向任意 OpenAI 兼容网关（litellm、one-api、自建聚合等）同样有效**，`gbrain models doctor` 会探测端点真实类别。示例落在 OpenAI 与 llama-server 两家是因为：embedding 的模型维度/名称是供应商资产（语法需 `provider:model` 前缀）；rerank 无统一标准（OpenAI 不提供 rerank API），仅实现了兼容 rerank 的端点（llama-server、zeroentropyai 等）可接。
 
 ### 4.1 Chat / 扩展模型（可选，语义检索的 expansion 依赖）
 
