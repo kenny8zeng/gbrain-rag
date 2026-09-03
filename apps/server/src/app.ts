@@ -13,6 +13,7 @@ import { requireAdmin, requireTenant, type Env } from "./middleware/auth";
 import { registerSystemRoutes } from "./openapi/routes/system";
 import { registerTenantRoutes } from "./openapi/routes/tenant";
 import { registerAdminRoutes } from "./openapi/routes/admin";
+import { registerModelAdminRoutes } from "./openapi/routes/model-admin";
 import { registerDocsUi } from "./openapi/ui";
 import { resolveParserFor } from "@core/ingest/resolver";
 import { corsMiddleware } from "./middleware/cors";
@@ -109,6 +110,7 @@ export function createApp(svc: Services): OpenAPIHono<Env> {
   registerSystemRoutes(app, svc);
   registerTenantRoutes(app, svc, tenant);
   registerAdminRoutes(app, svc, admin);
+  registerModelAdminRoutes(app, svc, admin);
 
   // 稳定地址：服务描述（结构化生成 + /mcp 说明条目）
   app.get("/openapi.json", (c) => c.json(buildOpenApiDoc(app)));

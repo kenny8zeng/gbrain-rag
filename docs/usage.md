@@ -64,6 +64,8 @@ POST /v1/kb/{id}/retrieval
 
 - `mode`: `hybrid`（默认，语义扩展+向量）依赖 embedding 配置；`keyword`（tsvector）开箱即用
 - 结果：`results[]`（slug/title/snippet/score/source_id）+ mode/degraded
+  - `snippet` ≤ 2000 字符；**命中仅返回元数据**（slug/title/snippet），全文内容经文档 API（`GET /v1/kb/:id/documents`）获取
+  - `degraded[]` 非空 = 该检索有降级（如 `embed_unavailable`/`rerank_unavailable`），空数组 = 全链路正常
 - rerank/语义质量由引擎侧配置（embedding/reranker 端点），服务透传
 
 ## 3. MCP（Agent 接入）
