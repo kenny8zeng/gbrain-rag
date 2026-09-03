@@ -6,7 +6,27 @@
 [![Bun](https://img.shields.io/badge/runtime-Bun-%23fbf0df)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org)
 
-以 [GBrain](https://github.com/garrytan/gbrain) 为知识库核心的 **RAG 知识库服务**：统一入口聚合知识分区管理、多来源文档摄取（docling / anydoc 双解析器，失败自动回退）、REST 检索与面向 AI Agent 的 MCP 网关。
+以 [GBrain](https://github.com/garrytan/gbrain) 为知识库核心的 **RAG 知识库服务**：给多个 AI Agent / 应用共用一个私有知识库，而不必自己搭建摄取管线、权限体系与模型接入。
+
+## 解决什么问题
+
+自建 RAG 服务通常要同时踩三座坑：
+
+| 坑 | 自建要做的 | gbrain-rag 的做法 |
+|---|---|---|
+| **多 Agent 共库的隔离与授权** | 设计权限模型、按分区过滤检索、防越权 | 每个 Agent 一把 key：**写分区 + 读授权**在签发时钉定，引擎级硬隔离（请求参数无法绕过）；吊销**即时生效**；跨库检索自动合并 |
+| **文档摄取管线** | 对接解析器、处理格式失败、断点重试 | 文件/图片/URL/Markdown 开箱即收：**双解析器自动回退**（docling + 内置毫秒级 anydoc），失败自动换路，异步任务重试 3 次 |
+| **模型接入配置** | 研究各家端点/接口差异、踩白名单坑 | 只填 OpenAI 兼容的**端点 + 模型 + key 三行**，维度/接口形态自动探测，配置错误当场报错（不会"看起来成功、跑起来才挂"） |
+
+## 核心特性
+
+- **Agent 原生**：内置 MCP 网关——Claude 等 Agent 用一把 key 直接读写知识库（`POST /mcp`），隔离随凭证走，无需中间层
+- **安全的凭证模型**：key 明文仅签发时返回一次、库里只有哈希；吊销与"不存在"同响应（不泄露）；越权一律 403 且不带存在性信息；每 key 独立并发闸门
+- **摄取即所得**：docx/PDF/Office/图片/URL/Markdown → 结构化页面 + 向量索引，upsert 覆盖更新、版本可回滚；扫描件可开托管 OCR
+- **九行配完模型**：对话/向量化/重排各三行（`*_BASE_URL` + `*_MODEL` + `*_API_KEY`）；换供应商 = 改三行；支持任意 OpenAI 兼容服务（百炼/OpenRouter/DeepSeek/OpenAI…）
+- **一条命令起服务**：单镜像 + `docker compose up`；外部依赖仅 Postgres 与（可选）docling
+- **完整可执行契约**：Swagger UI 在线调接口（可录入凭证执行）、OpenAPI 与路由零漂移（CI 闸门）、引擎 55 个运维命令同样走文档化接口
+- **运维可见**：`/health` 暴露解析器/模型/上游状态，检索降级有明确 `degraded` 原因
 
 ## 架构
 
@@ -79,6 +99,7 @@ bun test tests/integration          # 集成全链路（需 compose 栈）
 |---|---|
 | [docs/deployment.md](docs/deployment.md) | **部署说明**：架构/环境变量全表/持久化与备份/升级/故障排查 |
 | [docs/usage.md](docs/usage.md) | **使用介绍**：概念模型/接口平面/导入与检索/MCP/错误码速查 |
+| [docs/auth-model.md](docs/auth-model.md) | **认证模型**：管理面/租户面机制、凭证生命周期、上游隔离、安全属性 |
 | [docs/examples.md](docs/examples.md) | **使用示例**：完整可复制会话（建库→发凭证→导入→检索→权限→删除） |
 
 ### API 与契约
@@ -107,21 +128,6 @@ bun test tests/integration          # 集成全链路（需 compose 栈）
 |---|---|
 | GHCR | `ghcr.io/kenny8zeng/gbrain-rag` |
 | Docker Hub | `kenny8zeng/gbrain-rag` |
-
-### 触发与标签
-
-| 触发 | 标签 |
-|---|---|
-| 推送 `main` | `main`、`latest` |
-| Tag `v*`（如 `v0.1.0`） | tag、`latest` |
-| 手动 `workflow_dispatch` | 分支 ref、`latest` |
-
-### 一次性配置（仓库 Settings → Secrets and variables → Actions）
-
-- `DOCKERHUB_USERNAME`（Variables 或 Secrets）
-- `DOCKERHUB_TOKEN`（Secrets，Docker Hub 个人访问令牌，Read & Write 权限）
-
-GHCR 无需配置（自动 `GITHUB_TOKEN` + `packages: write`）。镜像内 gbrain 固定从 `garrytan/gbrain` v0.47.6.0 源码构建（见 `deploy/Dockerfile`）。
 
 ## 许可证
 

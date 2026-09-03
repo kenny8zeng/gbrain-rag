@@ -43,6 +43,25 @@ gbrain-rag 是以 [GBrain](https://github.com/garrytan/gbrain) 为知识库核�
 3. 提交 PR：模板见 `.github/PULL_REQUEST_TEMPLATE.md`
 4. 维护者评审：测试证据、缺陷台账更新、契约一致性（OpenAPI/契约文档）
 
+## 发布镜像（维护者）
+
+多架构（`linux/amd64`、`linux/arm64`）镜像由 [`.github/workflows/docker-multi-registry.yml`](.github/workflows/docker-multi-registry.yml) 自动构建并发布到双注册表：`ghcr.io/kenny8zeng/gbrain-rag` 与 `kenny8zeng/gbrain-rag`。
+
+### 触发与标签
+
+| 触发 | 标签 |
+|---|---|
+| 推送 `main` | `main`、`latest` |
+| Tag `v*`（如 `v0.1.0`） | tag、`latest` |
+| 手动 `workflow_dispatch` | 分支 ref、`latest` |
+
+### 一次性配置（仓库 Settings → Secrets and variables → Actions）
+
+- `DOCKERHUB_USERNAME`（Variables 或 Secrets）
+- `DOCKERHUB_TOKEN`（Secrets，Docker Hub 个人访问令牌，Read & Write 权限）
+
+GHCR 无需配置（自动 `GITHUB_TOKEN` + `packages: write`）。镜像内 gbrain 固定从 `garrytan/gbrain` v0.47.6.0 源码构建（见 `deploy/Dockerfile`）。
+
 ## 行为准则
 
 参与即同意 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
