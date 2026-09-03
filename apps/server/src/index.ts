@@ -8,6 +8,8 @@ import { processIngestJob } from "@core/ingest/pipeline";
 import { retrieveWithFallback } from "@core/retrieval";
 import { InternalRetrieval } from "@core/retrieval-serve";
 import { modelConfigState, validateModelConfig } from "@core/model-config";
+import { deriveSlotEnv, readEndpointModelEnv } from "@core/model-router";
+import { runGbrain } from "@core/gbrain-cli";
 import { createApp, type Services } from "./app";
 import { startSupervisor } from "./supervisor";
 import { startWorker } from "./worker";
@@ -26,6 +28,27 @@ async function main(): Promise<void> {
   }
   const modelState = modelConfigState(cfg);
   console.log(JSON.stringify({ evt: "model_config", embedding: modelState.embedding, rerank: modelState.rerank, chat: modelState.chat }));
+
+  // 统一配置面启动自愈：用户声明了 rerank 能力（RERANK_PROVIDER + RERANK_MODEL）时，
+  // 自动补齐引擎 schema 级前置（enabled/model/国内端点）——幂等，重复 set 同值无害。
+  // 此前这些前置漏设会零报错静默失效（doctor reranker_config (none)），此处根治。
+  // 端点三要素自愈：rerank 走 /reranks 槽（dashscope-rerank recipe）时自动补齐引擎
+  // schema 级前置（model/enabled/base_url）——幂等。标记由 entrypoint CLI 派生注入。
+  if (process.env.GBRAIN_RERANKER_CONFIG_REQUIRED === "1") {
+    try {
+      const envAll = process.env as Record<string, string>;
+      const u = readEndpointModelEnv(envAll);
+      const plan = deriveSlotEnv(envAll);
+      if (plan.rerankConfigRequired && plan.rerankModel && plan.rerankBaseUrl) {
+        await runGbrain(cfg, { args: ["config", "set", "search.reranker.model", plan.rerankModel], timeoutMs: 30_000 });
+        await runGbrain(cfg, { args: ["config", "set", "search.reranker.enabled", "true"], timeoutMs: 30_000 });
+        await runGbrain(cfg, { args: ["config", "set", "provider_base_urls.dashscope-rerank", plan.rerankBaseUrl], timeoutMs: 30_000 });
+        console.log(JSON.stringify({ evt: "model_self_heal", rerank: plan.rerankModel, base_url: plan.rerankBaseUrl }));
+      }
+    } catch (e) {
+      console.log(JSON.stringify({ evt: "model_self_heal", error: (e as Error).message.slice(0, 200) }));
+    }
+  }
 
   const supervisor = startSupervisor(cfg);
   // 等 serve 就绪（不阻塞启动，/health 会如实降级）

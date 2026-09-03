@@ -156,7 +156,10 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       writeFileSync(path.join(incomingDir(svc.cfg), stored), Buffer.from(buf));
       // slug 派生用原始文件名（显式 title 优先），避免内部存储名的时间戳前缀进入页面标识
       const title = typeof body["title"] === "string" && body["title"] ? body["title"] : file.name;
-      const job = await svc.submitJob({ kbId, type: "file", sourceRef: stored, title });
+      // .md / text/markdown 文件直通文本摄取（不经解析器——pipeline md 分支）：
+      // 解析器（anydoc/docling）对纯 markdown 无转换必要，且外部 docling 故障时不应阻塞 md 导入
+      const isMarkdown = /\.md$/i.test(file.name) || file.type === "text/markdown";
+      const job = await svc.submitJob({ kbId, type: isMarkdown ? "md" : "file", sourceRef: stored, title });
       return c.json({ job_id: job.id, kb_id: kbId, status: job.status }, 202);
     }
 

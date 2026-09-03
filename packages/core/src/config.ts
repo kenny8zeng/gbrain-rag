@@ -25,7 +25,12 @@ export const configSchema = z.object({
   JOB_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(104_857_600),
   /** 跨域来源列表（逗号分隔；空=关闭；* = 显式全放行） */
-  // ---- 供应商中立模型配置（映射为 gbrain 透传变量，见 entrypoint.sh / docs/deployment.md §4）----
+  // ---- 统一模型配置面（三要素心智：PROVIDER + 纯模型名；派生见 model-router.ts）----
+  // ---- 端点三要素配置面（唯一用户入口；仅 OpenAI 兼容 API）----
+  CHAT_BASE_URL: z.string().default(""),
+  CHAT_MODEL: z.string().default(""),
+  CHAT_API_KEY: z.string().default(""),
+  // ---- 引擎槽位派生变量（服务内部产物，用户不配置）----
   EMBEDDING_BASE_URL: z.string().default(""),
   EMBEDDING_MODEL: z.string().default(""),
   EMBEDDING_DIMENSIONS: z.string().default(""),
@@ -52,12 +57,6 @@ export const configSchema = z.object({
   LLAMA_SERVER_API_KEY: z.string().default(""),
   LLAMA_SERVER_RERANKER_BASE_URL: z.string().default(""),
   LLAMA_SERVER_RERANKER_API_KEY: z.string().default(""),
-  OPENAI_API_KEY: z.string().default(""),
-  DEEPSEEK_API_KEY: z.string().default(""),
-  ANTHROPIC_API_KEY: z.string().default(""),
-  VOYAGE_API_KEY: z.string().default(""),
-  DASHSCOPE_API_KEY: z.string().default(""),
-  OPENROUTER_API_KEY: z.string().default(""),
   CORS_ORIGINS: z.string().default("").refine((v) => {
     for (const entry of v.split(",").map((e) => e.trim()).filter(Boolean)) {
       if (entry === "*") continue;

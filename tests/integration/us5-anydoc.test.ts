@@ -11,12 +11,14 @@ const adminHeaders = () => ({ Authorization: `Bearer ${ADMIN}`, "Content-Type": 
 const UNIQUE = Date.now();
 const created: string[] = [];
 
-// anydoc 专属用例：仅当目标实例 parser_mode=anydoc 时运行（docling 实例全量回归自动跳过）
+// anydoc-only 专属用例：仅当目标实例 parser_mode=anydoc 且 docling 不可用（纯 anydoc 实例）
+// 时运行。docling 可达或双模式实例（parser_mode=anydoc 但 docling:true）自动跳过——
+// 本文件验证的是"无 docling 时 anydoc 独立可用 + URL/图片能力边界（422）"。
 let anydocMode = false;
 if (BASE && ADMIN) {
   try {
     const h = await (await fetch(`${BASE}/health`)).json();
-    anydocMode = h.parser_mode === "anydoc";
+    anydocMode = h.parser_mode === "anydoc" && h.docling === false;
   } catch {
     anydocMode = false;
   }

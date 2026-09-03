@@ -4,209 +4,170 @@ import type { Services } from "../../app";
 import type { Env } from "../../middleware/auth";
 import { libHandler } from "../handler";
 import { runGbrain } from "@core/gbrain-cli";
-import {
-  PROVIDER_FACTS,
-  checkModelChoice,
-  planModelAssembly,
-  currentModelState,
-  type ModelChoiceCheck,
-} from "@core/model-profiles";
+import { capabilityEnabled, capabilityGaps, readEndpointModelEnv } from "@core/model-router";
+import { probeAll, ProbeError, type ProbeErrorCode } from "@core/endpoint-probe";
+import { modelConfigState } from "@core/model-config";
 
-/** admin Bearer 中间件类型（与 admin.ts 共用签名） */
+/** admin Bearer 中间件类型 */
 type Admin = (c: Context<Env>, next: () => Promise<void>) => Promise<Response | void>;
 
+const CapabilityInput = z.object({
+  baseUrl: z.string().url().describe("OpenAI 兼容端点地址"),
+  model: z.string().min(1).refine((m) => !m.includes(":"), "模型为纯名称（禁止含 ':' 前缀标记）"),
+  apiKey: z.string().min(1),
+});
 const ModelsApplyBody = z.object({
-  provider: z.string().min(1).describe("供应商档案 id（dashscope | openrouter）"),
-  chat_model: z.string().optional().describe("chat 模型 id（档案内或宽放行通道）"),
-  embedding_model: z.string().optional().describe("embedding 模型 id（白名单内直连 / 白名单外自动别名通道）"),
-  embedding_dims: z.number().int().positive().optional().describe("embedding 维度（缺省取档案，未知则报错提示）"),
-  rerank_model: z.string().optional().describe("rerank 模型 id（缺省取档案默认）"),
-  apply: z.boolean().default(true).describe("true=执行 config set 装配；false=仅预检"),
+  chat: CapabilityInput.optional(),
+  embedding: CapabilityInput.extend({ dims: z.number().int().positive().optional() }).optional(),
+  rerank: CapabilityInput.optional(),
+  apply: z.boolean().default(true).describe("true=探测通过后执行 config set 装配；false=仅探测"),
 });
 
+const CapabilityView = z.object({
+  state: z.enum(["ready", "unconfigured", "gap", "probe_failed"]),
+  missing: z.array(z.string()).optional(),
+  error: z.enum(["ENDPOINT_UNREACHABLE", "KEY_REJECTED", "MODEL_NOT_FOUND", "CAPABILITY_UNSUPPORTED", "PROBE_TIMEOUT"]).nullable().optional(),
+  detail: z.string().nullable().optional(),
+  dim: z.number().nullable().optional(),
+  rerank_path: z.enum(["rerank", "reranks"]).nullable().optional(),
+});
 const ModelsApplyView = z.object({
-  provider: z.string(),
-  applied: z.array(z.object({ key: z.string(), value: z.string() })),
-  env_required: z.array(z.string()),
-  checks: z.array(
-    z.object({
-      capability: z.enum(["chat", "embedding", "rerank"]),
-      ok: z.boolean(),
-      route: z.enum(["direct", "alias", "none"]).nullable(),
-      provider_model: z.string().nullable(),
-      dim: z.number().nullable(),
-      warnings: z.array(z.string()).nullable(),
-      error: z.string().nullable(),
-    }),
-  ),
+  capabilities: z.object({ chat: CapabilityView, embedding: CapabilityView, rerank: CapabilityView }),
+  config_sets_applied: z.array(z.object({ key: z.string(), value: z.string() })),
   hint: z.string(),
 });
-
 const ModelsView = z.object({
-  providers: z.array(
-    z.object({
-      id: z.string(),
-      label: z.string(),
-      api_key_env: z.string(),
-      capabilities: z.array(z.enum(["chat", "embedding", "rerank"])),
-      embedding_allowlist: z.array(z.string()).nullable(),
-      embedding_alias: z.boolean(),
-      rerank_allowlist: z.array(z.string()).nullable(),
-    }),
-  ),
-  state: z.object({
-    env: z.object({
-      api_keys: z.record(z.string(), z.boolean()),
-      embedding: z.string(),
-      chat: z.string(),
-      embedding_dims: z.string(),
-    }),
-    config: z.object({
-      rerank_model: z.string().nullable(),
-      rerank_enabled: z.boolean(),
-      rerank_base_url: z.string().nullable(),
-    }),
-    complete: z.boolean(),
+  capabilities: z.object({ chat: CapabilityView, embedding: CapabilityView, rerank: CapabilityView }),
+  engine: z.object({
+    chat_model: z.string(),
+    embedding_model: z.string(),
+    embedding_dimensions: z.string(),
+    reranker_model: z.string().nullable(),
+    reranker_enabled: z.boolean(),
   }),
+  complete: z.boolean(),
 });
 
-function checkView(c: ModelChoiceCheck, capability: "chat" | "embedding" | "rerank") {
-  return {
-    capability,
-    ok: c.ok,
-    route: c.route ?? null,
-    provider_model: c.providerModel ?? null,
-    dim: c.dim ?? null,
-    warnings: c.warnings ?? null,
-    error: c.error ?? null,
-  };
-}
-
-const applyModelsRoute = createRoute({
+const applyRoute = createRoute({
   method: "post",
   path: "/v1/admin/models",
   tags: ["admin"],
+  summary: "模型配置：探测 + 装配（端点三要素）",
   security: [{ adminToken: [] }],
   request: { body: { required: true, content: { "application/json": { schema: ModelsApplyBody } } } },
   responses: {
-    200: { description: "模型装配完成（config set 已应用）", content: { "application/json": { schema: ModelsApplyView } } },
-    422: { description: "预检失败（白名单/维度/档案不存在）" },
+    200: { description: "探测报告 + 装配结果", content: { "application/json": { schema: ModelsApplyView } } },
+    422: { description: "探测失败（错误码 + 人话）" },
   },
 });
-
-const viewModelsRoute = createRoute({
+const viewRoute = createRoute({
   method: "get",
   path: "/v1/admin/models",
   tags: ["admin"],
+  summary: "模型配置状态",
   security: [{ adminToken: [] }],
-  responses: {
-    200: { description: "模型配置状态（档案清单 + env/DB 聚合）", content: { "application/json": { schema: ModelsView } } },
-  },
+  responses: { 200: { description: "配置状态", content: { "application/json": { schema: ModelsView } } } },
 });
 
+function viewOf(input: { baseUrl: string; model: string; apiKey: string }, label: string, probe: { ok: boolean; error?: ProbeErrorCode; dim?: number; path?: "rerank" | "reranks" } | undefined, extra: { missing?: string[]; detail?: string } = {}) {
+  const enabled = capabilityEnabled(input);
+  const gaps = enabled ? undefined : capabilityGaps(input, label);
+  return {
+    state: (!enabled ? (gaps && gaps.length < 3 ? "gap" : "unconfigured") : probe ? (probe.ok ? "ready" : "probe_failed") : "ready") as "ready" | "unconfigured" | "gap" | "probe_failed",
+    missing: gaps,
+    error: probe && !probe.ok ? ((probe.error as ProbeErrorCode | undefined) ?? null) : null,
+    detail: extra.detail ?? null,
+    dim: probe?.dim ?? null,
+    rerank_path: probe?.path ?? null,
+  };
+}
+
 export function registerModelAdminRoutes(app: OpenAPIHono<Env>, svc: Services, admin: Admin): void {
-  app.openapi(applyModelsRoute, libHandler<typeof applyModelsRoute>(async (c: Context<Env>) => {
+  app.openapi(applyRoute, libHandler<typeof applyRoute>(async (c: Context<Env>) => {
     const parsed = ModelsApplyBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      return c.json({ error: { code: "INVALID_PARAMS", message: "provider is required（dashscope | openrouter）" } }, 422);
+      return c.json({ error: { code: "INVALID_PARAMS", message: "body 需含 chat/embedding/rerank 的端点三要素（base_url/model/api_key）" } }, 422);
     }
     const body = parsed.data;
-    const facts = PROVIDER_FACTS[body.provider];
-    if (!facts) {
-      return c.json(
-        { error: { code: "INVALID_PARAMS", message: `unknown provider "${body.provider}"；可用：${Object.keys(PROVIDER_FACTS).join(" | ")}` } },
-        422,
-      );
-    }
 
-    const plan = planModelAssembly(facts, {
-      chatModel: body.chat_model,
-      embeddingModel: body.embedding_model,
-      embeddingDims: body.embedding_dims,
-      rerankModel: body.rerank_model,
+    const probe = await probeAll({
+      chat: body.chat ? { baseUrl: body.chat.baseUrl, model: body.chat.model, apiKey: body.chat.apiKey } : undefined,
+      embedding: body.embedding ? { baseUrl: body.embedding.baseUrl, model: body.embedding.model, apiKey: body.embedding.apiKey } : undefined,
+      rerank: body.rerank ? { baseUrl: body.rerank.baseUrl, model: body.rerank.model, apiKey: body.rerank.apiKey } : undefined,
     });
 
-    const failed = plan.checks.find((x) => !x.ok);
-    if (failed) {
-      return c.json(
-        {
-          error: { code: "INVALID_PARAMS", message: `${failed.capability}: ${failed.error ?? "model rejected"}` },
-          checks: plan.checks.map((x) => checkView(x, x.capability)),
-        },
-        422,
-      );
-    }
+    const capabilities = {
+      chat: viewOf(body.chat ?? { baseUrl: "", model: "", apiKey: "" }, "CHAT", probe.chat.ok ? probe.chat : probe.chat.error ? probe.chat : undefined),
+      embedding: viewOf(body.embedding ?? { baseUrl: "", model: "", apiKey: "" }, "EMBEDDING", probe.embedding),
+      rerank: viewOf(body.rerank ?? { baseUrl: "", model: "", apiKey: "" }, "RERANK", probe.rerank),
+    };
 
-    // embedding 维度缺口（档案未知且未提供）→ 引导而非静默
-    const emb = plan.checks.find((x) => x.capability === "embedding");
-    if (emb && emb.dim === null && !body.embedding_dims) {
+    // 探测失败 → 422（人话 + 错误码）
+    const failed = (Object.entries(probe) as Array<[keyof typeof probe, { ok: boolean; error?: ProbeErrorCode }]>).find(([, p]) => !p.ok && p.error);
+    if (failed) {
+      const [cap, p] = failed;
+      const msg =
+        p.error === "ENDPOINT_UNREACHABLE" ? "端点不可达：检查地址" :
+        p.error === "KEY_REJECTED" ? "凭证被拒绝（401/403）：检查 API key" :
+        p.error === "MODEL_NOT_FOUND" ? "模型在该端点不可用：检查型号" :
+        "该端点不支持此能力";
       return c.json(
-        {
-          error: {
-            code: "INVALID_PARAMS",
-            message: `模型 "${body.embedding_model}" 维度未知——请提供 embedding_dims（或先实测端点输出维度）`,
-          },
-        },
+        { error: { code: p.error, message: `${cap}: ${msg}` }, capabilities },
         422,
       );
     }
 
     const applied: Array<{ key: string; value: string }> = [];
     if (body.apply) {
-      for (const a of plan.actions) {
-        await runGbrain(svc.cfg, { args: ["config", "set", a.key, a.value], timeoutMs: 30_000 });
-        applied.push(a);
+      // rerank /reranks 槽 → config set 装配（幂等）
+      if (body.rerank && probe.rerank.path === "reranks") {
+        const sets = [
+          { key: "search.reranker.model", value: `dashscope-rerank:${body.rerank.model}` },
+          { key: "search.reranker.enabled", value: "true" },
+          { key: "provider_base_urls.dashscope-rerank", value: body.rerank.baseUrl },
+        ];
+        for (const s of sets) {
+          await runGbrain(svc.cfg, { args: ["config", "set", s.key, s.value], timeoutMs: 30_000 });
+          applied.push(s);
+        }
       }
+      // env 类派生已由 entrypoint 完成（容器重启后生效）；apply 场景提示重启以注入 key/端点 env
     }
 
     return c.json({
-      provider: facts.id,
-      applied,
-      env_required: plan.envRequired,
-      checks: plan.checks.map((x) => checkView(x, x.capability)),
-      hint: "env_required 中的变量需设到服务环境变量后重启生效（API key 属此类）；config set 类已落引擎 DB（重启不丢）。",
+      capabilities,
+      config_sets_applied: applied,
+      hint: "端点/模型/key 的 env 派生由服务启动时自动注入；apply 仅执行引擎 schema 级装配。若本次探测值与当前 env 不同，请同步 env 后重启。",
     } satisfies z.infer<typeof ModelsApplyView>);
   }));
 
-  app.openapi(viewModelsRoute, libHandler<typeof viewModelsRoute>(async (c: Context<Env>) => {
-    let dbConfig: { rerankModel?: string; rerankEnabled?: string; rerankBaseUrl?: string } = {};
+  app.openapi(viewRoute, libHandler<typeof viewRoute>(async (c: Context<Env>) => {
+    const u = readEndpointModelEnv({ ...process.env } as Record<string, string>);
+    const state = modelConfigState(svc.cfg);
+    let rerankerModel: string | null = null;
+    let rerankerEnabled = false;
     try {
-      const [model, enabled, baseUrl] = await Promise.all([
-        runGbrain(svc.cfg, { args: ["config", "get", "search.reranker.model"], timeoutMs: 30_000 }).then((r) => r.stdout.trim()).catch(() => ""),
-        runGbrain(svc.cfg, { args: ["config", "get", "search.reranker.enabled"], timeoutMs: 30_000 }).then((r) => r.stdout.trim()).catch(() => ""),
-        runGbrain(svc.cfg, { args: ["config", "get", "provider_base_urls.dashscope-rerank"], timeoutMs: 30_000 }).then((r) => r.stdout.trim()).catch(() => ""),
-      ]);
-      dbConfig = { rerankModel: model, rerankEnabled: enabled, rerankBaseUrl: baseUrl };
+      const m = await runGbrain(svc.cfg, { args: ["config", "get", "search.reranker.model"], timeoutMs: 30_000 }).then((r) => r.stdout.trim()).catch(() => "");
+      const e = await runGbrain(svc.cfg, { args: ["config", "get", "search.reranker.enabled"], timeoutMs: 30_000 }).then((r) => r.stdout.trim()).catch(() => "");
+      rerankerModel = m || null;
+      rerankerEnabled = e === "true";
     } catch {
-      // config get 不可用时返回 env 面状态（serve 场景）
+      // config get 不可用时保持默认
     }
-
     return c.json({
-      providers: Object.values(PROVIDER_FACTS).map((f) => ({
-        id: f.id,
-        label: f.label,
-        api_key_env: f.apiKeyEnv,
-        capabilities: (["chat", "embedding", "rerank"] as const).filter((cap) => {
-          if (cap === "chat") return f.chatOpen;
-          if (cap === "embedding") return Boolean(f.embedding);
-          return Boolean(f.rerank);
-        }),
-        embedding_allowlist: f.embedding?.directAllowlist ?? null,
-        embedding_alias: Boolean(f.embedding?.aliasBaseUrl),
-        rerank_allowlist: f.rerank?.allowlist ?? null,
-      })),
-      state: (() => {
-        const st = currentModelState(svc.cfg, dbConfig);
-        return {
-          env: { api_keys: st.env.apiKeys, embedding: st.env.embedding, chat: st.env.chat, embedding_dims: st.env.embeddingDims },
-          config: { rerank_model: st.config.rerankModel, rerank_enabled: st.config.rerankEnabled, rerank_base_url: st.config.rerankBaseUrl },
-          complete: st.complete,
-        };
-      })(),
+      capabilities: {
+        chat: viewOf(u.chat, "CHAT", state.chat ? { ok: true } : undefined),
+        embedding: viewOf(u.embedding, "EMBEDDING", state.embedding ? { ok: true } : undefined),
+        rerank: viewOf(u.rerank, "RERANK", state.rerank ? { ok: true } : undefined),
+      },
+      engine: {
+        chat_model: svc.cfg.GBRAIN_CHAT_MODEL,
+        embedding_model: svc.cfg.GBRAIN_EMBEDDING_MODEL,
+        embedding_dimensions: svc.cfg.GBRAIN_EMBEDDING_DIMENSIONS,
+        reranker_model: rerankerModel,
+        reranker_enabled: rerankerEnabled,
+      },
+      complete: state.chat && state.embedding && state.rerank,
     } satisfies z.infer<typeof ModelsView>);
   }));
 }
-
-/** 类型透出（供 openapi-drift 等消费） */
-export const ModelAdminSchemas = { ModelsApplyBody, ModelsApplyView, ModelsView };
-export { checkModelChoice };
