@@ -180,8 +180,14 @@ function isValidCron(expr: string): boolean {
 }
 
 function fieldMatch(field: string, value: number, max: number): boolean {
+  if (field === "*") return true;
   for (const part of field.split(",")) {
-    if (part.startsWith("*/")) { const n = Number(part.slice(2)); if (value % n === 0) return true; continue; }
+    if (part === "*" || part.startsWith("*/")) {
+      if (part === "*") return true;
+      const n = Number(part.slice(2));
+      if (value % n === 0) return true;
+      continue;
+    }
     const [a, b] = part.split("-").map(Number);
     if (b === undefined ? value === a : value >= a! && value <= b!) return true;
   }
