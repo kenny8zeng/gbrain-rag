@@ -73,6 +73,7 @@ beforeAll(() => {
     onKbCreated: async () => undefined,
     onKbPurged: async () => undefined,
     modelState: { embedding: false, rerank: false, chat: false },
+    dream: {} as never,
   });
 
   const doc = buildOpenApiDoc(app);

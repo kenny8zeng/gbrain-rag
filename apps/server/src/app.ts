@@ -9,11 +9,13 @@ import { handleAdminRequest } from "@core/admin-proxy";
 import type { KeyRow } from "@core/credentials";
 import type { RetrievalInput, RetrievalResponse } from "@core/retrieval";
 import type { ModelConfigState } from "@core/model-config";
+import type { DreamRunner } from "@core/dream";
 import { requireAdmin, requireTenant, type Env } from "./middleware/auth";
 import { registerSystemRoutes } from "./openapi/routes/system";
 import { registerTenantRoutes } from "./openapi/routes/tenant";
 import { registerAdminRoutes } from "./openapi/routes/admin";
 import { registerModelAdminRoutes } from "./openapi/routes/model-admin";
+import { registerDreamAdminRoutes } from "./openapi/routes/dream-admin";
 import { registerDocsUi } from "./openapi/ui";
 import { resolveParserFor } from "@core/ingest/resolver";
 import { corsMiddleware } from "./middleware/cors";
@@ -28,6 +30,7 @@ export interface Services {
   serveReady: () => boolean;
   doclingOk: () => Promise<boolean>;
   modelState: ModelConfigState;
+  dream: DreamRunner;
   submitJob: (input: { kbId: string; type: "file" | "url" | "md"; sourceRef: string; title?: string | null }) => Promise<{ id: string; status: string }>;
   retrieve: (kbId: string, input: RetrievalInput) => Promise<RetrievalResponse>;
   onKbCreated: (kbId: string) => Promise<void>;
@@ -111,6 +114,7 @@ export function createApp(svc: Services): OpenAPIHono<Env> {
   registerTenantRoutes(app, svc, tenant);
   registerAdminRoutes(app, svc, admin);
   registerModelAdminRoutes(app, svc, admin);
+  registerDreamAdminRoutes(app, svc, admin);
 
   // 稳定地址：服务描述（结构化生成 + /mcp 说明条目）
   app.get("/openapi.json", (c) => c.json(buildOpenApiDoc(app)));

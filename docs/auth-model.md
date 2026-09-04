@@ -9,7 +9,7 @@
 |---|---|---|---|
 | 凭证 | `ADMIN_TOKEN`（部署时环境变量） | API key（`gbrag_<32hex>`，签发产生） | 无 |
 | 传输 | `Authorization: Bearer <token>` | `X-API-Key: <key>` | — |
-| 覆盖 | KB 生命周期、凭证签发/变更/吊销、任务、模型配置、引擎运维代理（`/v1/admin/gbrain/*`） | 导入、页面管理、检索、任务状态、MCP | `/health`、`/docs`、`/openapi.json` |
+| 覆盖 | KB 生命周期、凭证签发/变更/吊销、任务、模型配置、梦境周期（`/v1/admin/dream`）、引擎运维代理（`/v1/admin/gbrain/*`） | 导入、页面管理、检索、任务状态、MCP | `/health`、`/docs`、`/openapi.json` |
 | 信任边界 | **全权**（含破坏性运维） | 签发时钉定的分区组合 | 只读元数据 |
 | 隔离实现 | 单 token 比对 | 哈希查表 → 上游 OAuth client 硬隔离 | — |
 

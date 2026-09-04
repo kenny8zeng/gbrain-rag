@@ -33,6 +33,7 @@
 | `POST /v1/keys` · `PATCH/DELETE /v1/keys/:id` · `GET /v1/keys` | 签发（明文仅一次）/变更授权（即时生效）/吊销/列表 |
 | `GET /v1/jobs` · `/v1/jobs/:id` | 任务列表（kb/status 过滤）/详情 |
 | `/v1/admin/gbrain/*` | gbrain 引擎全量运维（55 路由；SSE 流式，只读状态路由支持 `?format=json`） |
+| `POST/GET /v1/admin/dream` | 梦境周期：手工触发一次（异步 202）/ 状态查询（运行中触发 409 `DREAM_RUNNING`） |
 | `/v1/admin/models` | 模型配置装配（POST 预检+config set 装配 / GET 状态聚合） |
 
 ### 租户面
@@ -101,6 +102,7 @@ POST /v1/kb/{id}/retrieval
 | PAYLOAD_TOO_LARGE | 413 | 超 MAX_UPLOAD_BYTES |
 | INVALID_PARAMS | 422 | 参数不合法 |
 | PARSER_UNAVAILABLE | 422 | 当前解析模式不支持该通道（如 anydoc 模式的 URL） |
+| DREAM_RUNNING | 409 | 梦境周期已在运行（再次触发被拒） |
 | RATE_LIMITED | 429 | 并发超限 |
 | INTERNAL | 500 | 服务端错误（日志含详情） |
 

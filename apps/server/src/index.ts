@@ -10,6 +10,7 @@ import { InternalRetrieval } from "@core/retrieval-serve";
 import { modelConfigState, validateModelConfig } from "@core/model-config";
 import { deriveSlotEnv, readEndpointModelEnv } from "@core/model-router";
 import { runGbrain } from "@core/gbrain-cli";
+import { DreamRunner } from "@core/dream";
 import { createApp, type Services } from "./app";
 import { startSupervisor } from "./supervisor";
 import { startWorker } from "./worker";
@@ -27,6 +28,13 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ evt: "model_config_warning", kind: w.kind, message: w.message }));
   }
   const modelState = modelConfigState(cfg);
+  const dream = new DreamRunner(cfg);
+  if (dream.status().enabled) {
+    // 梦境周期定时唤醒（tick 粒度 60s；到点判定在 runner 内按 nextDue 精确执行）
+    setInterval(() => void dream.maybeScheduled(), 60_000).unref?.();
+    const st = dream.status();
+    console.log(JSON.stringify({ evt: "dream_scheduler", enabled: true, tier: st.tier, interval_hours: st.intervalHours, next_due: st.nextDue }));
+  }
   console.log(JSON.stringify({ evt: "model_config", embedding: modelState.embedding, rerank: modelState.rerank, chat: modelState.chat }));
 
   // 统一配置面启动自愈：用户声明了 rerank 能力（RERANK_PROVIDER + RERANK_MODEL）时，
@@ -99,6 +107,7 @@ async function main(): Promise<void> {
     lookupKey: (hash) => lookupKeyByHash(db, hash),
     serveReady: () => supervisor.ready(),
     modelState,
+    dream,
     doclingOk: doclingProbe(cfg.DOCLING_URL),
     submitJob,
     retrieve: (kbId, input) =>

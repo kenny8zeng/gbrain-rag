@@ -30,6 +30,10 @@ export const configSchema = z.object({
   CHAT_BASE_URL: z.string().default(""),
   CHAT_MODEL: z.string().default(""),
   CHAT_API_KEY: z.string().default(""),
+  // ---- 梦境周期调度（默认关；light=仅关系提取无LLM / full=全部维护阶段）----
+  DREAM_ENABLED: z.string().default("false"),
+  DREAM_INTERVAL_HOURS: z.string().default("24"),
+  DREAM_TIER: z.enum(["light", "full"]).default("light"),
   // ---- 引擎槽位派生变量（服务内部产物，用户不配置）----
   EMBEDDING_BASE_URL: z.string().default(""),
   EMBEDDING_MODEL: z.string().default(""),

@@ -27,6 +27,7 @@ Rolling your own RAG service means tripping over the same three pits:
 - **One command to start**: single image + `docker compose up`; only Postgres and (optional) docling are external
 - **Fully executable contract**: Swagger UI with credential entry (run calls online), drift-free OpenAPI (CI gate), 55 engine ops also exposed as documented routes
 - **Observable**: `/health` surfaces parser/model/upstream state; retrieval degradations carry explicit `degraded` reasons
+- **Knowledge-graph upkeep (optional)**: enable the dream cycle to auto-extract page relations into the graph (light tier, no LLM); admin API for manual triggers with run-exclusivity
 
 ## Architecture
 

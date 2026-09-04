@@ -3,6 +3,12 @@
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
 ## [Unreleased]
+### Added
+
+- 梦境周期调度：`DREAM_ENABLED`/`DREAM_INTERVAL_HOURS`/`DREAM_TIER` 环境变量（默认关），服务内定时触发引擎维护周期；轻量档自动提取页面关系建图（零 LLM）
+- 管理面 `POST/GET /v1/admin/dream`：手工触发（异步 202）与状态查询；运行中再次触发返回 `409 DREAM_RUNNING`（不叠跑，超时自愈）
+- 文档同步：deployment 环境变量表与梦境周期小节、usage 管理面路由与错误码、auth-model 管理面覆盖、README 中英特性
+
 
 ### 新增
 
