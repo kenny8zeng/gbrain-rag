@@ -74,7 +74,8 @@ EOF
 | `MAX_UPLOAD_BYTES` | 104857600 | 单文件上传上限 |
 | `WORKER_CONCURRENCY` | 2 | 摄取并发 |
 | `DREAM_ENABLED` | `false` | 梦境周期定时开关（默认关 = 零行为变化；开启后按间隔自动触发，见 §梦境周期） |
-| `DREAM_INTERVAL_HOURS` | `24` | 定时触发间隔（小时） |
+| `DREAM_INTERVAL_HOURS` | `24` | 定时触发间隔（小时）；设了 `DREAM_AT` 时忽略 |
+| `DREAM_AT` | 空 | 每日固定时刻触发（`HH:MM`，如 `04:00`，服务器时区——可用 `TZ` 环境变量调整）；设此则按每日时刻而非间隔 |
 | `DREAM_TIER` | `light` | 成本档：`light`=仅关系/时间线提取（无 LLM 合成）；`full`=全部维护阶段（含 LLM 反思合成，复用主对话模型） |
 | `JOB_MAX_ATTEMPTS` | 3 | 任务失败重试次数 |
 | `JOB_TIMEOUT_MS` | 600000 | 任务超时（docling 调用另受 110s 下限约束） |
@@ -84,6 +85,7 @@ EOF
 
 默认关闭（零行为变化）。开启后服务定时执行引擎维护周期：
 
+- **触发方式**：设 `DREAM_AT=04:00` 每日固定时刻（如凌晨 4 点）；或只设 `DREAM_INTERVAL_HOURS` 按间隔（默认 24h）；二者都不设 = 仅手工触发（`POST /v1/admin/dream`）
 - **轻量档（`light`，默认）**：仅关系/时间线提取——把页面间相互提及自动建成知识图谱边（无 LLM 消耗；此前空图谱运行一次即可见 `gbrain link-sources` 出现 `mentions` 边）
 - **完整档（`full`）**：全部维护阶段（lint/回链/同步/反思合成/提取/模式/嵌入/孤儿检查）——含 LLM 反思合成，**复用主对话模型**（端点三要素自动适配），消耗按对话模型计费
 

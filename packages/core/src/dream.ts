@@ -42,6 +42,8 @@ export class DreamRunner {
   private tier: DreamTier;
   private readonly intervalMs: number;
   private readonly enabled: boolean;
+  /** 每日固定时刻（HH:MM 解析结果，分钟）；null = 间隔模式 */
+  private readonly dailyAt: number | null;
   /** 依赖注入（可测）：默认 runGbrain；测试替换为 mock */
   private readonly exec: (args: string[]) => Promise<{ stdout: string; exitCode: number }>;
 
@@ -53,6 +55,8 @@ export class DreamRunner {
     const h = Number(cfg.DREAM_INTERVAL_HOURS);
     this.intervalMs = (Number.isFinite(h) && h > 0 ? h : 24) * 3600 * 1000;
     this.tier = cfg.DREAM_TIER === "full" ? "full" : "light";
+    // 每日时刻模式（DREAM_AT="HH:MM"）优先；未设则间隔模式
+    this.dailyAt = parseDailyAt(cfg.DREAM_AT);
     this.exec = deps?.exec ?? (async (args) => {
       try {
         const r = await runGbrain(cfg, { args, timeoutMs: DREAM_TIMEOUT_MS });
@@ -65,7 +69,7 @@ export class DreamRunner {
   }
 
   private scheduleNext(from: number): void {
-    this.nextDue = from;
+    this.nextDue = this.dailyAt !== null ? nextDailyAt(this.dailyAt, from) : from;
   }
 
   get intervalHours(): number {
@@ -85,8 +89,8 @@ export class DreamRunner {
     this.lastError = null;
     console.log(JSON.stringify({ evt: "dream_started", tier: useTier, trigger }));
     void this.run(useTier).then(() => {
-      // 完成后推进下轮
-      if (this.enabled) this.scheduleNext(Date.now() + this.intervalMs);
+      // 完成后推进下轮（每日时刻模式自动算次日同刻；间隔模式 = 现在+间隔）
+      if (this.enabled) this.scheduleNext(Date.now());
     });
     return { accepted: true };
   }
@@ -96,7 +100,7 @@ export class DreamRunner {
     if (!this.enabled || this.nextDue === null || Date.now() < this.nextDue) return;
     if (this.running) {
       console.log(JSON.stringify({ evt: "dream_rejected", reason: "running", trigger: "scheduled" }));
-      this.scheduleNext(Date.now() + this.intervalMs); // 跳过本轮，顺延
+      this.scheduleNext(Date.now()); // 跳过本轮（每日模式顺延到次日同刻/间隔模式顺延一间隔）
       return;
     }
     await this.start("scheduled");
@@ -152,4 +156,25 @@ function summarizeDream(stdout: string): string {
   } catch {
     return stdout.slice(0, 120);
   }
+}
+
+
+/** 解析 "HH:MM" → 当日分钟数；非法返回 null */
+function parseDailyAt(v: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** 自 from 起的下一个 HH:MM 时刻（分钟制）——今天未过则今天，否则次日 */
+function nextDailyAt(dayMinutes: number, from: number): number {
+  const d = new Date(from);
+  const today = d.getHours() * 60 + d.getMinutes();
+  const target = new Date(from);
+  target.setHours(Math.floor(dayMinutes / 60), dayMinutes % 60, 0, 0);
+  if (dayMinutes <= today) target.setDate(target.getDate() + 1); // 已过 → 次日
+  return target.getTime();
 }

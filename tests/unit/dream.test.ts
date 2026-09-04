@@ -93,6 +93,48 @@ describe("DreamRunner 锁与触发", () => {
     await sleep(20);
   });
 
+  test("DREAM_AT 每日时刻：nextDue = 当日 HH:MM（未过）", async () => {
+    const now = Date.now();
+    const d = new Date(now);
+    const at = d.getHours().toString().padStart(2, "0") + ":" + String(Math.min(d.getMinutes() + 5, 59)).padStart(2, "0"); // 未来 5 分钟
+    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_AT: at });
+    const nd = new Date(r.status().nextDue!);
+    expect(nd.getHours() * 60 + nd.getMinutes()).toBe(Number(at.split(":")[0]) * 60 + Number(at.split(":")[1]));
+    expect(nd.getTime()).toBeGreaterThan(now);
+  });
+
+  test("DREAM_AT 已过当日时刻 → nextDue = 次日同刻", async () => {
+    const d = new Date();
+    const past = (d.getHours() - 1 + 24) % 24; // 必然早于现在
+    const at = past.toString().padStart(2, "0") + ":00";
+    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_AT: at });
+    const nd = new Date(r.status().nextDue!);
+    expect(nd.getHours() * 60 + nd.getMinutes()).toBe(past * 60);
+    expect(nd.getTime()).toBeGreaterThan(Date.now()); // 次日
+  });
+
+  test("DREAM_AT 到点触发 → 完成后 nextDue 推进到次日同刻", async () => {
+    let calls = 0;
+    const d = new Date();
+    const at = d.getHours().toString().padStart(2, "0") + ":" + String(Math.min(d.getMinutes() + 5, 59)).padStart(2, "0");
+    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_AT: at }, async () => { calls++; return { stdout: "{}", exitCode: 0 }; });
+    (r as unknown as { nextDue: number | null }).nextDue = Date.now() - 1000; // 模拟到点
+    await r.maybeScheduled();
+    expect(calls).toBe(1);
+    await sleep(10);
+    // 完成后 nextDue 应 > 现在（次日/未来同刻）且非 null
+    const nd = r.status().nextDue;
+    expect(nd).not.toBeNull();
+    expect(new Date(nd!).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  test("DREAM_AT 非法 → 回退间隔模式", async () => {
+    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_AT: "25:99" });
+    // nextDue = now+interval（间隔 24h）
+    const delta = new Date(r.status().nextDue!).getTime() - Date.now();
+    expect(delta).toBeGreaterThan(23 * 3600_000);
+  });
+
   test("超时常量导出（防挂死永久锁）", () => {
     expect(DREAM_TIMEOUT_MS).toBeGreaterThan(0);
   });

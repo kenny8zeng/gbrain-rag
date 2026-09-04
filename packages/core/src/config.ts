@@ -33,6 +33,8 @@ export const configSchema = z.object({
   // ---- 梦境周期调度（默认关；light=仅关系提取无LLM / full=全部维护阶段）----
   DREAM_ENABLED: z.string().default("false"),
   DREAM_INTERVAL_HOURS: z.string().default("24"),
+  /** 每日固定时刻触发（HH:MM，如 04:00——设此则按每日时刻，忽略间隔）；未设按 DREAM_INTERVAL_HOURS */
+  DREAM_AT: z.string().default(""),
   DREAM_TIER: z.enum(["light", "full"]).default("light"),
   // ---- 引擎槽位派生变量（服务内部产物，用户不配置）----
   EMBEDDING_BASE_URL: z.string().default(""),
