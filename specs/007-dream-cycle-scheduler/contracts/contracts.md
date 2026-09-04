@@ -3,9 +3,9 @@
 ## 1. 环境变量
 
 ```env
-# 梦境周期（默认全关 = 现状零变化）
+# 梦境周期（默认关 = 现状零变化）
 DREAM_ENABLED=false            # true=启用定时梦境
-DREAM_INTERVAL_HOURS=24        # 触发间隔（小时）
+DREAM_CRON="0 4 * * *"         # cron 5 段（默认每日凌晨 4 点，服务器时区）；空=仅手工
 DREAM_TIER=light               # light=仅关系/时间线提取(无LLM合成) | full=全部维护阶段(含LLM反思合成)
 ```
 

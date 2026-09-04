@@ -33,7 +33,7 @@ async function main(): Promise<void> {
     // 梦境周期定时唤醒（tick 粒度 60s；到点判定在 runner 内按 nextDue 精确执行）
     setInterval(() => void dream.maybeScheduled(), 60_000).unref?.();
     const st = dream.status();
-    console.log(JSON.stringify({ evt: "dream_scheduler", enabled: true, tier: st.tier, interval_hours: st.intervalHours, next_due: st.nextDue }));
+    console.log(JSON.stringify({ evt: "dream_scheduler", enabled: true, tier: st.tier, cron: st.cron, next_due: st.nextDue }));
   }
   console.log(JSON.stringify({ evt: "model_config", embedding: modelState.embedding, rerank: modelState.rerank, chat: modelState.chat }));
 

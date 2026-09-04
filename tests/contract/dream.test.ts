@@ -17,6 +17,7 @@ gated("contract: 梦境周期管理面", () => {
     const j = (await r.json()) as Record<string, unknown>;
     expect(typeof j.enabled).toBe("boolean");
     expect(["light", "full"]).toContain(String(j.tier));
+    expect(typeof j.cron).toBe("string");
     expect(typeof j.running).toBe("boolean");
     expect("next_due" in j).toBe(true);
     expect("last_run" in j).toBe(true);

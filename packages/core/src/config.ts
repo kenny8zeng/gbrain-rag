@@ -32,9 +32,8 @@ export const configSchema = z.object({
   CHAT_API_KEY: z.string().default(""),
   // ---- 梦境周期调度（默认关；light=仅关系提取无LLM / full=全部维护阶段）----
   DREAM_ENABLED: z.string().default("false"),
-  DREAM_INTERVAL_HOURS: z.string().default("24"),
-  /** 每日固定时刻触发（HH:MM，如 04:00——设此则按每日时刻，忽略间隔）；未设按 DREAM_INTERVAL_HOURS */
-  DREAM_AT: z.string().default(""),
+  /** cron 5 段表达式（如 "0 4 * * *" 每日凌晨 4 点）；空 = 仅手工触发 */
+  DREAM_CRON: z.string().default("0 4 * * *"),
   DREAM_TIER: z.enum(["light", "full"]).default("light"),
   // ---- 引擎槽位派生变量（服务内部产物，用户不配置）----
   EMBEDDING_BASE_URL: z.string().default(""),

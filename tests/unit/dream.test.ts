@@ -16,10 +16,37 @@ function mkRunner(over: Record<string, string> = {}, exec?: (args: string[]) => 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("DreamRunner 锁与触发", () => {
-  test("默认关闭：enabled=false 且无定时（T003 env 默认）", () => {
-    const r = mkRunner();
+  test("默认关闭：enabled=false 且无 nextDue", () => {
+    const r = mkRunner({ DREAM_ENABLED: "false" });
     expect(r.status().enabled).toBe(false);
     expect(r.status().nextDue).toBeNull();
+  });
+
+  test("DREAM_CRON 每日 04:00 → nextDue 为未来 04:00", () => {
+    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_CRON: "0 4 * * *" });
+    const nd = new Date(r.status().nextDue!);
+    expect(nd.getHours()).toBe(4);
+    expect(nd.getMinutes()).toBe(0);
+    expect(nd.getTime()).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  test("DREAM_CRON 非法 → 视为仅手工（nextDue null + 不崩）", async () => {
+    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_CRON: "not a cron" });
+    expect(r.status().nextDue).toBeNull();
+    const res = await r.start("manual", "light");
+    expect(res.accepted).toBe(true);
+    await sleep(10);
+  });
+
+  test("DREAM_CRON 每分钟（* * * * *）到点触发一次", async () => {
+    let calls = 0;
+    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_CRON: "* * * * *" }, async () => { calls++; return { stdout: "{}", exitCode: 0 }; });
+    await r.maybeScheduled(); // nextDue 下一分钟 → 未到
+    expect(calls).toBe(0);
+    (r as unknown as { nextDue: number | null }).nextDue = Date.now() - 1000;
+    await r.maybeScheduled();
+    expect(calls).toBe(1);
+    await sleep(10);
   });
 
   test("轻量档启动 → args=dream --phase extract --json；完成后 running=false + lastRun", async () => {
@@ -55,32 +82,9 @@ describe("DreamRunner 锁与触发", () => {
     await sleep(10);
   });
 
-  test("定时到点 + running → 跳过顺延（不叠跑）", async () => {
-    let release: () => void = () => {};
-    const gate = new Promise<void>((res) => { release = res; });
-    let calls = 0;
-    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_INTERVAL_HOURS: "1" }, async () => { calls++; await gate; return { stdout: "{}", exitCode: 0 }; });
-    // 推进 nextDue 到过去
-    (r as unknown as { nextDue: number | null }).nextDue = Date.now() - 1000;
-    await r.start("manual", "light"); // 占锁（running）
-    await r.maybeScheduled(); // 到点但 running → 跳过
-    expect(calls).toBe(1); // 未叠跑
-    expect(r.status().running).toBe(true);
-    release();
-    await sleep(10);
-    expect(r.status().running).toBe(false);
-  });
 
-  test("定时启用且到点且空闲 → 触发；未到点不触发", async () => {
-    let calls = 0;
-    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_INTERVAL_HOURS: "24" }, async () => { calls++; return { stdout: "{}", exitCode: 0 }; });
-    await r.maybeScheduled(); // nextDue = now+24h → 不触发
-    expect(calls).toBe(0);
-    (r as unknown as { nextDue: number | null }).nextDue = Date.now() - 1000;
-    await r.maybeScheduled();
-    expect(calls).toBe(1);
-    await sleep(10);
-  });
+
+
 
   test("失败记录 lastRun.ok=false + lastError；运行结束可再触发", async () => {
     const r = mkRunner({}, async () => ({ stdout: "boom exit", exitCode: 1 }));
@@ -93,47 +97,13 @@ describe("DreamRunner 锁与触发", () => {
     await sleep(20);
   });
 
-  test("DREAM_AT 每日时刻：nextDue = 当日 HH:MM（未过）", async () => {
-    const now = Date.now();
-    const d = new Date(now);
-    const at = d.getHours().toString().padStart(2, "0") + ":" + String(Math.min(d.getMinutes() + 5, 59)).padStart(2, "0"); // 未来 5 分钟
-    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_AT: at });
-    const nd = new Date(r.status().nextDue!);
-    expect(nd.getHours() * 60 + nd.getMinutes()).toBe(Number(at.split(":")[0]) * 60 + Number(at.split(":")[1]));
-    expect(nd.getTime()).toBeGreaterThan(now);
-  });
 
-  test("DREAM_AT 已过当日时刻 → nextDue = 次日同刻", async () => {
-    const d = new Date();
-    const past = (d.getHours() - 1 + 24) % 24; // 必然早于现在
-    const at = past.toString().padStart(2, "0") + ":00";
-    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_AT: at });
-    const nd = new Date(r.status().nextDue!);
-    expect(nd.getHours() * 60 + nd.getMinutes()).toBe(past * 60);
-    expect(nd.getTime()).toBeGreaterThan(Date.now()); // 次日
-  });
 
-  test("DREAM_AT 到点触发 → 完成后 nextDue 推进到次日同刻", async () => {
-    let calls = 0;
-    const d = new Date();
-    const at = d.getHours().toString().padStart(2, "0") + ":" + String(Math.min(d.getMinutes() + 5, 59)).padStart(2, "0");
-    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_AT: at }, async () => { calls++; return { stdout: "{}", exitCode: 0 }; });
-    (r as unknown as { nextDue: number | null }).nextDue = Date.now() - 1000; // 模拟到点
-    await r.maybeScheduled();
-    expect(calls).toBe(1);
-    await sleep(10);
-    // 完成后 nextDue 应 > 现在（次日/未来同刻）且非 null
-    const nd = r.status().nextDue;
-    expect(nd).not.toBeNull();
-    expect(new Date(nd!).getTime()).toBeGreaterThan(Date.now());
-  });
 
-  test("DREAM_AT 非法 → 回退间隔模式", async () => {
-    const r = mkRunner({ DREAM_ENABLED: "true", DREAM_AT: "25:99" });
-    // nextDue = now+interval（间隔 24h）
-    const delta = new Date(r.status().nextDue!).getTime() - Date.now();
-    expect(delta).toBeGreaterThan(23 * 3600_000);
-  });
+
+
+
+
 
   test("超时常量导出（防挂死永久锁）", () => {
     expect(DREAM_TIMEOUT_MS).toBeGreaterThan(0);

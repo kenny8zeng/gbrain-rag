@@ -13,7 +13,7 @@ const DreamTriggerBody = z.object({
 const DreamStatusView = z.object({
   enabled: z.boolean(),
   tier: z.enum(["light", "full"]),
-  interval_hours: z.number(),
+  cron: z.string(),
   running: z.boolean(),
   started_at: z.string().nullable(),
   next_due: z.string().nullable(),
@@ -79,7 +79,7 @@ const statusRoute = createRoute({
     return c.json({
       enabled: st.enabled,
       tier: st.tier,
-      interval_hours: st.intervalHours,
+      cron: st.cron,
       running: st.running,
       started_at: st.startedAt,
       next_due: st.nextDue,
