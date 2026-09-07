@@ -124,7 +124,7 @@ RERANK_API_KEY=sk-...
 ### 4.1 服务自动完成的事（用户无感）
 
 - **配置时真实探测**（启动/`POST /v1/admin/models`）：端点可达、模型存在、凭证有效、能力支持——错误当场人话返回（`ENDPOINT_UNREACHABLE`/`KEY_REJECTED`/`MODEL_NOT_FOUND`/`CAPABILITY_UNSUPPORTED`）
-- **维度自动探测**：向端点发最小嵌入请求取默认输出维度（引擎不发 dimensions 参数，以端点实返为准）
+- **维度自动探测**（entrypoint，引擎 init 前）：无显式维度时对端点发一次最小嵌入请求取默认输出维度并注入引擎——全新部署首次 init 即得正确 schema（引擎对空维度不做默认，缺此探测则向量摄取失败）；端点探测失败时需显式设 `EMBEDDING_DIMENSIONS`
 - **重排接口形态自动识别**：`/reranks`（复数）与 `/rerank`（单数）路径各服务不统一——探测识别后自动选接入通道
 - 端点/模型/key 经服务映射到引擎通道（chat/embedding 走通用 OpenAI 兼容通道；rerank 按形态装配），**运行期模型不可用时降级提示含可切换建议**
 
