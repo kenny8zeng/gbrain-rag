@@ -34,13 +34,20 @@ function str(v: unknown, fallback = ""): string {
 }
 
 export function normalizeHits(raw: RawHit[]): RetrievalHit[] {
-  return raw.map((h) => ({
+  const hits = raw.map((h) => ({
     slug: str(h.slug),
     title: str(h.title, str(h.slug)),
     snippet: str(h.chunk_text, str(h.text, str(h.snippet))).slice(0, 2000),
     score: num(h.score),
     source_id: str(h.source_id) || null,
   }));
+  // 按 slug 去重（保留最高分）：hybrid 双臂（keyword+vector）可能各自返回同页，重复结果干扰消费方
+  const seen = new Map<string, RetrievalHit>();
+  for (const h of hits) {
+    const prev = seen.get(h.slug);
+    if (!prev || h.score > prev.score) seen.set(h.slug, h);
+  }
+  return [...seen.values()];
 }
 
 export interface RetrievalInput {

@@ -5,7 +5,7 @@ import type { Env } from "../../middleware/auth";
 import { libHandler } from "../handler";
 import { canReadKb, canWriteKb } from "../../middleware/auth";
 import { ensureKbActive, KbNotFoundError, KbArchivedError } from "@core/kb";
-import { runGbrain, runGbrainJson } from "@core/gbrain-cli";
+import { CliError, runGbrain, runGbrainJson } from "@core/gbrain-cli";
 import { resolveParserFor } from "@core/ingest/resolver";
 import { ParserUnavailableError } from "@core/ingest/parser";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -193,6 +193,17 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       const stored = `${Date.now()}-${randomHex(6)}.md`;
       writeFileSync(path.join(incomingDir(svc.cfg), stored), md, "utf8");
       const title = c.req.header("x-slug") ?? null;
+      if (title !== null && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(title)) {
+        return c.json(
+          {
+            error: {
+              code: "INVALID_PARAMS",
+              message: "X-Slug 仅允许 ASCII（字母/数字/._-），中文标题请用正文首行 # 标题；显式 slug 请用英文",
+            },
+          },
+          422,
+        );
+      }
       const job = await svc.submitJob({ kbId, type: "md", sourceRef: stored, title });
       return c.json({ job_id: job.id, kb_id: kbId, status: job.status }, 202);
     }
@@ -254,6 +265,44 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       .filter((cols) => cols.length >= 1 && cols[0]!.trim().length > 0)
       .map((cols) => ({ slug: cols[0]!.trim(), type: cols[1]?.trim() ?? null, date: cols[2]?.trim() ?? null, title: cols[3]?.trim() ?? null }));
     return c.json({ kb_id: kbId, pages });
+  }));
+
+  // 页面全文（读）：slug 经 query 传递（多段 slug 含 /，避免路径参数无法匹配）
+  const pageFull = createRoute({
+    method: "get",
+    path: "/v1/kb/{id}/page",
+    tags: ["tenant"],
+    summary: "页面全文（markdown）",
+    middleware: [tenant],
+    security: [{ apiKey: [] }],
+    request: { params: KbIdParam, query: z.object({ slug: z.string().min(1) }) },
+    responses: {
+      200: { description: "页面全文", content: { "application/json": { schema: z.object({ slug: z.string(), content: z.string() }) } } },
+      404: { description: "页面不存在" },
+      422: { description: "参数不合法" },
+    },
+  });
+  app.openapi(pageFull, libHandler<typeof pageFull>(async (c) => {
+    const kbId = c.req.param("id")!;
+    const key = c.get("keyRow");
+    const slug = c.req.query("slug") ?? "";
+    if (!canReadKb(key, kbId)) {
+      return c.json({ error: { code: "FORBIDDEN", message: "kb not authorized for this key" } }, 403);
+    }
+    // 防跨库：slug 必须属于本 KB 源
+    if (!slug.startsWith(`${kbId}/docs/`)) {
+      return c.json({ error: { code: "INVALID_PARAMS", message: "slug must belong to this kb" } }, 422);
+    }
+    try {
+      await ensureKbActive(svc.cfg, kbId);
+      const r = await runGbrain(svc.cfg, { args: ["get", slug, "--include-content"], source: kbId, timeoutMs: 30_000 });
+      return c.json({ slug, content: r.stdout });
+    } catch (e) {
+      if (e instanceof CliError && /not found/i.test(String(e.message))) {
+        return c.json({ error: { code: "NOT_FOUND", message: "page not found" } }, 404);
+      }
+      throw e;
+    }
   }));
 
   // 删除页面（写）。slug 固定三段 <source>/docs/<name>（slugifyName 保证 name 无斜杠），

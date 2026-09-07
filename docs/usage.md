@@ -42,6 +42,7 @@
 |---|---|---|
 | `POST /v1/kb/:id/documents` | 导入（multipart 文件 / `{url}` / text-markdown） | 写分区 |
 | `GET /v1/kb/:id/documents` | 页面列表 | 读授权 |
+| `GET /v1/kb/:id/page?slug=...` | **页面全文**（markdown，slug 须属本 kb） | 读授权 |
 | `DELETE /v1/kb/:id/documents/docs/:name` | 删除页面 | 写分区 |
 | `GET /v1/kb/:id/documents/jobs/:jobId` | 任务状态 | 读授权 |
 | `POST /v1/kb/:id/retrieval` | 检索（`mode: hybrid\|keyword`） | 读授权 |
@@ -56,6 +57,7 @@ curl -F file=@report.docx http://.../v1/kb/$KB/documents
 curl -d '{"url":"https://example.com/doc"}' http://.../v1/kb/$KB/documents
 
 # ③ Markdown 直传（不经解析器，两模式一致；X-Slug 控制页面名）
+# X-Slug 仅允许 ASCII（字母/数字/._-）；中文标题请用正文首行 #（非 ASCII slug 显式 422）
 curl -H 'Content-Type: text/markdown' -H 'X-Slug: notes' --data-binary @note.md ...
 ```
 

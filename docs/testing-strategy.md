@@ -73,6 +73,12 @@ us5/us6 顶部探测 `/health` 自适应跑对应分支——docling 全量回�
 | # | 缺陷 | 修复 | 回归测试 | 状态 |
 |---|---|---|---|---|
 | D14 | 代理并发闸门泄漏：cli2api runCli 异常/断开路径不触发完成 → 服务端 gate 累积残留误伤 429 | ProxyGate 自愈（60s）+ SSE cancel 即释放 + gate 与 runCli 内部 sem 解耦 | admin-proxy 契约（连续两轮全量绿 + 结束后 gate 干净） | ✓ |
+| D15 | 摄取显式 embed 恒失败误报 done_with_warnings（URL/md upsert，source=default） | pipeline 冗余显式 embed 删除（put 已连带 embed） | P1/P2 修复提交 | ✓ |
+| D16 | hybrid 检索同 slug 重复结果 | normalizeHits 按 slug 去重保留最高分 | P4 修复提交 | ✓ |
+| D17 | 中文 X-Slug 静默清洗+title mojibake | X-Slug 非 ASCII 显式 422 拒绝 | P5 修复提交 | ✓ |
+| D18 | 全新实例 embedding_dimensions 空致 embed 失败 | entrypoint init 前探测注入维度 | 006 修复提交 | ✓ |
+| D19 | 租户无页面全文端点（文档与实现不符） | GET /v1/kb/:id/page?slug= 全文端点 | P6 修复提交 | ✓ |
+| D20 | gbrain CLI 升级提示混入错误输出 | runGbrain stderr 噪声剥离 | P8 修复提交 | ✓ |
 
 ## 5. 首批补齐（P1 = 台账 ✗ 项）
 

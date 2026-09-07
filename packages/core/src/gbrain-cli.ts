@@ -7,7 +7,7 @@ export class CliError extends Error {
     readonly exitCode: number | null,
     readonly stderr: string,
   ) {
-    super(`gbrain ${args.join(" ")} exited with ${exitCode ?? "signal"}: ${stderr.slice(0, 500)}`);
+    super(`gbrain ${args.join(" ")} exited with ${exitCode ?? "signal"}: ${cleanCliStderr(stderr).slice(0, 500)}`);
     this.name = "CliError";
   }
 }
@@ -24,6 +24,16 @@ export interface CliResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+}
+
+/** 剥离引擎 CLI 输出噪声（升级提示/版本行/key 回退警告），保留真实错误尾段 */
+function cleanCliStderr(raw: string): string {
+  return raw
+    .split("\n")
+    .filter((l) => !/UPGRADE_AVAILABLE|-> \d+\.\d+\.\d+ available|Run: gbrain self-upgrade|^gbrain \d+\.\d+\.\d+/i.test(l))
+    .filter((l) => !/^\[models\] /i.test(l))
+    .join("\n")
+    .trim();
 }
 
 function buildEnv(inv: CliInvocation): Record<string, string> {

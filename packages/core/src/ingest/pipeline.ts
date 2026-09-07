@@ -131,12 +131,10 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
     throw e;
   }
 
-  try {
-    await runGbrain(cfg, { args: ["embed", slug], source: job.kbId, timeoutMs: cfg.JOB_TIMEOUT_MS });
-  } catch (e) {
-    status = "done_with_warnings";
-    error = `embed failed: ${(e as Error).message}`;
-  }
+  // 注：不另跑显式 embed——gbrain put 已连带 embed（source 由 put 上下文正确解析）。
+  // 引擎 embed 命令忽略 GBRAIN_SOURCE env 且无公开 --source（帮助未列），显式调用恒以
+  // source=default 失败并误报 done_with_warnings；put 连带 embed 失败时上方 pageExists
+  // 复核分支已降级处理（页面写入但未索引 → 关键词可检索）。
 
   // 归档原始文件（md/url 类型仅在 md 有暂存文件时归档）
   if (job.type === "file") {

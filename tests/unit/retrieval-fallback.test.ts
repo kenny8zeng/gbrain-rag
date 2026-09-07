@@ -45,6 +45,19 @@ const INPUT = { query: "anything", mode: "keyword" as const, topK: 5 };
 
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
+describe("normalizeHits slug 去重（P4：hybrid 双臂重复）", () => {
+  test("同 slug 多次 → 去重保留最高分", async () => {
+    const { normalizeHits } = await import("../../packages/core/src/retrieval");
+    const hits = normalizeHits([
+      { slug: "kb-x/docs/a", title: "A", chunk_text: "low", score: 0.3 },
+      { slug: "kb-x/docs/a", title: "A", chunk_text: "high", score: 0.9 },
+      { slug: "kb-x/docs/b", title: "B", chunk_text: "b", score: 0.5 },
+    ]);
+    expect(hits.length).toBe(2);
+    expect(hits.find((h) => h.slug.endsWith("/a"))?.score).toBe(0.9);
+  });
+});
+
 describe("InternalRetrieval.retrieve（serve 通道）", () => {
   test("JSON-RPC 文本解析为命中", async () => {
     const serve = new InternalRetrieval(cfg, mkUpstream(
