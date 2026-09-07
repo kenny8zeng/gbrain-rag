@@ -7,7 +7,7 @@ export class CliError extends Error {
     readonly exitCode: number | null,
     readonly stderr: string,
   ) {
-    super(`gbrain ${args.join(" ")} exited with ${exitCode ?? "signal"}: ${cleanCliStderr(stderr).slice(0, 500)}`);
+    super(`gbrain ${args[0] ?? "cli"} exited with ${exitCode ?? "signal"}: ${cleanCliStderr(stderr).slice(0, 400)}`);
     this.name = "CliError";
   }
 }

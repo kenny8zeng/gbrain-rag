@@ -117,14 +117,19 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
       timeoutMs: cfg.JOB_TIMEOUT_MS,
     });
   } catch (e) {
-    // gbrain put 会连带 embed：embedding 端点不可达时 CLI 非零退出但页面可能已写入——
-    // 复核存在性：已写入则降级 done_with_warnings（关键词检索可用），否则真失败
+    const msg = (e as Error).message;
+    // 存储层错误（repo/磁盘/写盘失败）= 页面未写入的真失败——绝不降级 warning
+    if (/repo_not_found|storage_error|could not be written|no such file|ENOENT/i.test(msg)) {
+      throw e;
+    }
+    // 其余 put 失败：gbrain put 会连带 embed——embedding 端点不可达时 CLI 非零退出但页面可能已写入。
+    // 复核存在性：已写入则降级 done_with_warnings（关键词检索可用），否则真失败。
     if (await pageExists(cfg, job.kbId, slug)) {
       return {
         status: "done_with_warnings",
         outcome: existed ? "updated" : "created",
         docSlug: slug,
-        error: `put partially failed (embed/unreachable?): ${(e as Error).message.slice(0, 300)}`,
+        error: `put partially failed (embed/unreachable?): ${msg.slice(0, 300)}`,
         parserLog,
       };
     }
