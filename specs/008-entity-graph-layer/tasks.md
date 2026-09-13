@@ -57,18 +57,18 @@
 
 ## Phase 6: US3 实体多跳（P2）
 
-- [X] T024 [US3] `deploy/clis/gbrain.yaml`：新增 `traverse-graph` 与 `entity` 代理路由（走 MCP，参数 `slug`/`depth`/`direction`/`link_type`）
+- [~] T024 [US3] ~~`deploy/clis/gbrain.yaml` 新增代理路由~~ → **实现方式变更**：改用专用管理面路由 `/v1/admin/graph/*`（走 MCP `traverse_graph`/`get_page`），不走 cli2api（CLI `graph-query --direction both` 打印器丢入边，R12；MCP `entity` 在内部 client 多库视角下按名解析不稳）
 - [X] T025 [US3] 管理面路由（`apps/server/src/openapi/routes/admin.ts`）：实体卡 + 多跳查询端点（`libHandler` 包装，字段 snake_case）
 - [X] T026 [P] [US3] 契约测试：两个新路由的注册与响应形状
 - [X] T027 [US3] 端到端：以实体为起点 depth=2/direction=both → 路径非空；跨库同名实体不串（source 隔离）
 
 ## Phase 7: 部署与数据迁移
 
-- [ ] T028 构建新镜像并生产滚动更新（`updateServiceImageTag` + restart）
-- [ ] T029 生产确保 `global_basename` 已开（`gbrain config get`）
-- [ ] T030 按 D1 策略重建库（归档 → purge → 新建）→ 按 slug 映射表重放文档
-- [ ] T031 核对生产：`link-sources` 非空、边数与文档双链对数量级一致、`sources/status` 覆盖度 100%
-- [ ] T032 关联项目 5 项验收复测（写/幂等重传/URL/图片/覆盖度）——确认 SC-006 文档面语义零变化
+- [X] T028 构建新镜像并生产滚动更新（`updateServiceImageTag` + restart）
+- [X] T029 生产确保 `global_basename` 已开（`gbrain config get`）
+- [X] T030 按 D1 策略重建库（归档 → purge → 新建）→ 按 slug 映射表重放文档
+- [X] T031 核对生产：`link-sources` 非空、边数与文档双链对数量级一致、`sources/status` 覆盖度 100%
+- [X] T032 关联项目 5 项验收复测（写/幂等重传/URL/图片/覆盖度）——确认 SC-006 文档面语义零变化
 
 ## Phase 8: 收尾
 
