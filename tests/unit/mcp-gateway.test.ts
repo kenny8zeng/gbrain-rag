@@ -131,3 +131,61 @@ describe("McpGateway 鉴权与并发", () => {
     expect(r2.status).toBe(200);
   });
 });
+
+describe("文档面类型注入（008：MCP 读工具排除实体页）", () => {
+  test("search/query 注入 types=[note]", async () => {
+    const { rewriteDocPlaneCall } = await import("../../packages/core/src/mcp-gateway");
+    for (const tool of ["search", "query"]) {
+      const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: tool, arguments: { query: "battery" } } });
+      const out = JSON.parse(rewriteDocPlaneCall(body)!);
+      expect(out.params.arguments.types).toEqual(["note"]);
+    }
+  });
+
+  test("list_pages 注入 type=note（单数参数）", async () => {
+    const { rewriteDocPlaneCall } = await import("../../packages/core/src/mcp-gateway");
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_pages", arguments: { limit: 50 } } });
+    const out = JSON.parse(rewriteDocPlaneCall(body)!);
+    expect(out.params.arguments.type).toBe("note");
+  });
+
+  test("调用方显式指定类型时尊重（不过滤）", async () => {
+    const { rewriteDocPlaneCall } = await import("../../packages/core/src/mcp-gateway");
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "query", arguments: { query: "x", types: ["concept"] } } });
+    expect(rewriteDocPlaneCall(body)).toBeNull();
+  });
+
+  test("非文档面工具不改写（图工具照常可用）", async () => {
+    const { rewriteDocPlaneCall } = await import("../../packages/core/src/mcp-gateway");
+    for (const tool of ["traverse_graph", "get_links", "get_backlinks", "entity", "get_page", "get_chunks"]) {
+      const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: tool, arguments: { slug: "kb-x/entities/battery" } } });
+      expect(rewriteDocPlaneCall(body)).toBeNull();
+    }
+  });
+
+  test("非 tools/call 方法不改写（initialize/tools/list 不受影响）", async () => {
+    const { rewriteDocPlaneCall } = await import("../../packages/core/src/mcp-gateway");
+    for (const method of ["initialize", "tools/list", "notifications/initialized"]) {
+      expect(rewriteDocPlaneCall(JSON.stringify({ jsonrpc: "2.0", id: 1, method }))).toBeNull();
+    }
+  });
+
+  test("批量请求（数组）逐条处理", async () => {
+    const { rewriteDocPlaneCall } = await import("../../packages/core/src/mcp-gateway");
+    const body = JSON.stringify([
+      { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search", arguments: { query: "a" } } },
+      { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "traverse_graph", arguments: { slug: "s" } } },
+    ]);
+    const out = JSON.parse(rewriteDocPlaneCall(body)!);
+    expect(out[0].params.arguments.types).toEqual(["note"]);
+    expect(out[1].params.arguments.types).toBeUndefined();
+  });
+
+  test("非法 JSON 与缺参数安全透传", async () => {
+    const { rewriteDocPlaneCall } = await import("../../packages/core/src/mcp-gateway");
+    expect(rewriteDocPlaneCall("not json")).toBeNull();
+    expect(rewriteDocPlaneCall("null")).toBeNull();
+    expect(rewriteDocPlaneCall(JSON.stringify({ method: "tools/call" }))).toBeNull();
+    expect(rewriteDocPlaneCall(JSON.stringify({ method: "tools/call", params: { name: "search" } }))).not.toBeNull();
+  });
+});

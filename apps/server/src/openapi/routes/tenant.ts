@@ -358,6 +358,68 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
     return c.body(null, 204);
   }));
 
+  // 知识图谱（读）：008——租户的确定性检索链走 REST（Agent 走 MCP 图工具），
+  // 故在图查询面提供受读授权管控的 REST 端点。
+  //
+  // 隔离：图查询经内部 client（federated 覆盖全部 kb-*），故**必须**双重收敛——
+  // ① 起点 slug 必须属于本 key 可读的库；② 返回的每条路径两端都必须落在可读库内，
+  // 否则会跨租户泄漏。
+  const slugOwner = (slug: string): string | null => /^(kb-[0-9a-f]{8})\//.exec(slug)?.[1] ?? null;
+
+  const graphTraverse = createRoute({
+    method: "get",
+    path: "/v1/kb/{id}/graph/traverse",
+    tags: ["tenant"],
+    summary: "从页面出发的多跳关系遍历（图谱检索）",
+    middleware: [tenant],
+    security: [{ apiKey: [] }],
+    request: {
+      params: KbIdParam,
+      query: z.object({
+        slug: z.string().min(1).describe("起点页 slug（全路径，如 <kb>/entities/battery）"),
+        depth: z.coerce.number().int().min(1).max(5).optional(),
+        direction: z.enum(["in", "out", "both"]).optional(),
+        link_type: z.string().optional(),
+      }),
+    },
+    responses: {
+      200: { description: "关系路径", content: { "application/json": { schema: z.object({ paths: z.array(z.record(z.string(), z.unknown())) }) } } },
+      ...err403(),
+      ...err404("知识库不存在"),
+      ...err410(),
+      422: { description: "参数不合法", content: { "application/json": { schema: ErrorEnvelope } } },
+    },
+  });
+  app.openapi(graphTraverse, libHandler<typeof graphTraverse>(async (c) => {
+    const kbId = c.req.param("id")!;
+    const key = c.get("keyRow");
+    if (!canReadKb(key, kbId)) {
+      return c.json({ error: { code: "FORBIDDEN", message: "kb not authorized for this key" } }, 403);
+    }
+    try {
+      await ensureKbActive(svc.cfg, kbId);
+    } catch (e) {
+      return kbState(c, e);
+    }
+    const q = c.req.query();
+    const owner = slugOwner(q.slug!);
+    if (!owner || !canReadKb(key, owner)) {
+      return c.json({ error: { code: "INVALID_PARAMS", message: "slug must belong to a kb this key can read" } }, 422);
+    }
+    const allowed = new Set<string>([kbId, ...(key.writeKb ? [key.writeKb] : []), ...key.readKbs]);
+    const args: Record<string, unknown> = { slug: q.slug };
+    if (q.depth !== undefined) args.depth = Number(q.depth);
+    if (q.direction !== undefined) args.direction = q.direction;
+    if (q.link_type !== undefined) args.link_type = q.link_type;
+    const raw = await svc.graphQuery<Array<Record<string, unknown>>>("traverse_graph", args);
+    const paths = (Array.isArray(raw) ? raw : []).filter((p) => {
+      const from = slugOwner(String(p.from_slug ?? ""));
+      const to = slugOwner(String(p.to_slug ?? ""));
+      return from !== null && to !== null && allowed.has(from) && allowed.has(to);
+    });
+    return c.json({ paths });
+  }));
+
   // 任务状态
   const jobStatus = createRoute({
     method: "get",

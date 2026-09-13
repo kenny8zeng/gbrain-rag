@@ -30,17 +30,23 @@
 | 跨库隔离 | 实体页位于各库自己的 `entities/` 分区，同名概念在不同库互不串边 |
 | 派生数据 | 实体页由文档双链推导（不落磁盘、不进备份）；丢失可经重新导入文档 100% 重建 |
 
-**图查询（管理面）**：
+**图查询**：
+
+租户面（受读授权管控，确定性检索链用）：
 
 ```bash
-# 实体卡：摘要 + 出/入边
-GET /v1/admin/graph/entity?name=Battery
-
-# 多跳遍历：从某页出发的关系路径
-GET /v1/admin/graph/traverse?slug=<kb>/entities/battery&depth=2&direction=both
+# 多跳关系遍历（起点 slug 须属本 key 可读的库；返回路径已收敛到可读库内）
+GET /v1/kb/{id}/graph/traverse?slug=<kb>/entities/battery&depth=2&direction=both
 ```
 
-Agent 侧经 MCP 可直接使用 `traverse_graph` / `entity` / `get_links` / `get_backlinks` 等工具（以 `tools/list` 实际返回为准）。
+管理面（全库，运维/调试用）：
+
+```bash
+GET /v1/admin/graph/entity?slug=<kb>/entities/battery     # 实体卡：页面摘要 + 出/入边
+GET /v1/admin/graph/traverse?slug=...&depth=2&direction=both
+```
+
+Agent 侧经 MCP 可用 `traverse_graph` / `entity` / `get_links` / `get_backlinks`（以 `tools/list` 实际返回为准）。**MCP 的文档面读工具（`search`/`query`/`list_pages`）已注入文档类型过滤**——实体页不会出现在你的文档视图里；图工具不受影响。
 
 ## 2. 接口平面
 
@@ -77,6 +83,7 @@ Agent 侧经 MCP 可直接使用 `traverse_graph` / `entity` / `get_links` / `ge
 | `DELETE /v1/kb/:id/documents/docs/:name` | 删除页面 | 写分区 |
 | `GET /v1/kb/:id/documents/jobs/:jobId` | 任务状态 | 读授权 |
 | `POST /v1/kb/:id/retrieval` | 检索（`mode: hybrid\|keyword`） | 读授权 |
+| `GET /v1/kb/:id/graph/traverse` | 图谱多跳遍历（`slug`/`depth`/`direction`/`link_type`） | 读授权 |
 
 ### 三种导入输入
 
