@@ -51,4 +51,16 @@ describe("buildMarkdown", () => {
     expect(out).not.toContain("old");
     expect(out).toContain("body");
   });
+
+  // 008：文档类型由服务钉定——引擎对 `docs/` 前缀无推断规则，会落默认 concept
+  test("显式钉定 type: note（不依赖引擎路径推断）", () => {
+    const out = buildMarkdown("内容", { title: "T", kb: "kb-aabbccdd", convertedAt: "now" });
+    expect(out).toContain("type: note");
+  });
+
+  test("正文自带 type 被服务钉定值覆盖", () => {
+    const out = buildMarkdown("---\ntitle: x\ntype: entity\n---\nbody", { title: "T", kb: "kb-1", convertedAt: "now" });
+    expect(out).toContain("type: note");
+    expect(out).not.toContain("type: entity");
+  });
 });

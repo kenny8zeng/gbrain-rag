@@ -35,6 +35,8 @@ export interface Services {
   retrieve: (kbId: string, input: RetrievalInput) => Promise<RetrievalResponse>;
   onKbCreated: (kbId: string) => Promise<void>;
   onKbPurged: () => Promise<void>;
+  /** 008 图查询：实体卡与多跳遍历（走 MCP traverse_graph/entity） */
+  graphQuery: <T>(tool: string, args: Record<string, unknown>) => Promise<T>;
 }
 
 /** 422 统一 envelope（OpenAPIHono 校验失败的出口） */

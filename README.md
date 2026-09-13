@@ -27,6 +27,7 @@ Rolling your own RAG service means tripping over the same three pits:
 - **One command to start**: single image + `docker compose up`; only Postgres and (optional) docling are external
 - **Fully executable contract**: Swagger UI with credential entry (run calls online), drift-free OpenAPI (CI gate), 55 engine ops also exposed as documented routes
 - **Observable**: `/health` surfaces parser/model/upstream state; retrieval degradations carry explicit `degraded` reasons
+- **Wikilink knowledge graph**: write `[[Concept]]` in your Markdown and the service auto-creates the concept's node page and the graph edges on import — entity-level multi-hop queries over `/v1/admin/graph/*` or MCP `traverse_graph`; entity nodes stay invisible to the document APIs (type + prefix filtering), so "page = your document" keeps holding
 - **Knowledge-graph upkeep (optional)**: enable the dream cycle to auto-extract page relations into the graph (light tier, no LLM); admin API for manual triggers with run-exclusivity
 
 ## Architecture

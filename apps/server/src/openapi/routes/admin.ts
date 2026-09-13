@@ -389,4 +389,76 @@ export function registerAdminRoutes(app: OpenAPIHono<Env>, svc: Services, admin:
     }
     return c.json(jobJson(rows[0] as Record<string, unknown>));
   }));
+
+  // ---- 008 知识图谱：实体卡 + 多跳遍历 ----
+  // 走 MCP（traverse_graph / get_page）而非 CLI graph-query：后者 `--direction both`
+  // 的树打印器按 from_slug 归组，入边不渲染（research R12）；且 MCP `entity` 工具在
+  // 内部 client 的多库 federated 视角下按名解析不稳（实测 found:false），故实体卡由
+  // depth=1 双向遍历 + 页面摘要组装。
+  const entityCardRoute = createRoute({
+    method: "get",
+    path: "/v1/admin/graph/entity",
+    tags: ["admin"],
+    summary: "实体卡（摘要 + 出/入边）——slug 为全路径（<kb>/entities/<name>）",
+    middleware: [admin],
+    security: [{ adminToken: [] }],
+    request: { query: z.object({ slug: z.string().min(1) }) },
+    responses: {
+      200: { description: "实体卡", content: { "application/json": { schema: z.record(z.string(), z.unknown()) } } },
+      ...err401(),
+      ...err422(),
+    },
+  });
+  app.openapi(entityCardRoute, libHandler<typeof entityCardRoute>(async (c: Context<Env>) => {
+    const slug = c.req.query("slug")!;
+    const [paths, page] = await Promise.all([
+      svc.graphQuery<Array<{ from_slug: string; to_slug: string; link_type: string; context?: string }>>("traverse_graph", {
+        slug,
+        depth: 1,
+        direction: "both",
+      }),
+      svc.graphQuery<Record<string, unknown>>("get_page", { slug }).catch(() => null),
+    ]);
+    const outgoing = paths.filter((p) => p.from_slug === slug).map((p) => ({ slug: p.to_slug, link_type: p.link_type, context: p.context ?? null }));
+    const incoming = paths.filter((p) => p.to_slug === slug).map((p) => ({ slug: p.from_slug, link_type: p.link_type, context: p.context ?? null }));
+    return c.json({
+      slug,
+      found: paths.length > 0 || page !== null,
+      page,
+      outgoing,
+      incoming,
+      outgoing_count: outgoing.length,
+      incoming_count: incoming.length,
+    });
+  }));
+
+  const traverseRoute = createRoute({
+    method: "get",
+    path: "/v1/admin/graph/traverse",
+    tags: ["admin"],
+    summary: "从页面出发的多跳遍历（关系路径）",
+    middleware: [admin],
+    security: [{ adminToken: [] }],
+    request: {
+      query: z.object({
+        slug: z.string().min(1),
+        depth: z.coerce.number().int().min(1).max(5).optional(),
+        direction: z.enum(["in", "out", "both"]).optional(),
+        link_type: z.string().optional(),
+      }),
+    },
+    responses: {
+      200: { description: "路径列表", content: { "application/json": { schema: z.record(z.string(), z.unknown()) } } },
+      ...err401(),
+      ...err422(),
+    },
+  });
+  app.openapi(traverseRoute, libHandler<typeof traverseRoute>(async (c: Context<Env>) => {
+    const q = c.req.query();
+    const args: Record<string, unknown> = { slug: q.slug };
+    if (q.depth !== undefined) args.depth = Number(q.depth);
+    if (q.direction !== undefined) args.direction = q.direction;
+    if (q.link_type !== undefined) args.link_type = q.link_type;
+    return c.json(await svc.graphQuery("traverse_graph", args));
+  }));
 }

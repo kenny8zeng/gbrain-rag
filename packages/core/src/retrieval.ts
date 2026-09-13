@@ -1,5 +1,6 @@
 import type { Config } from "./config";
 import { runGbrainJson } from "./gbrain-cli";
+import { DOC_TYPE, isDocSlug } from "./entity-graph";
 
 export interface RetrievalHit {
   slug: string;
@@ -57,6 +58,25 @@ export interface RetrievalInput {
 }
 
 /**
+ * 文档面过滤（008）：结构兜底——只保留 `<kb>/docs/` 分区的命中。
+ * 类型过滤负责召回质量，这里负责**正确性**（不依赖类型是否正确/是否漂移）。
+ * 同时按 top_k 截断（P10：引擎的 adaptive/多查询会超量返回）。
+ */
+export function filterDocumentHits(kbId: string, hits: RetrievalHit[], topK?: number): RetrievalHit[] {
+  const docs = hits.filter((h) => isDocSlug(kbId, h.slug));
+  return topK && topK > 0 ? docs.slice(0, topK) : docs;
+}
+
+/**
+ * 实体页与文档页竞争同一批结果位次 ⇒ 过取补偿（引擎上限 100）。
+ * 无 topK 时不过取（调用方只要默认档位）。
+ */
+export function overFetchLimit(topK: number | undefined, factor = 4): number | null {
+  if (!topK || topK <= 0) return null;
+  return Math.min(Math.max(topK * factor, topK), 100);
+}
+
+/**
  * T049 降级封装：优先常驻 serve 通道，故障回退 CLI spawn（CHK021）。
  * 日志事件 retrieval_fallback 供运维观测降级频率。
  */
@@ -84,7 +104,10 @@ export async function retrieve(
     mode === "keyword"
       ? ["search", input.query]
       : ["query", input.query];
-  if (input.topK && input.topK > 0) args.push("--limit", String(Math.min(input.topK, 100)));
+  // 文档面：类型过滤（召回质量）+ 过取（补偿与实体页的位次竞争）
+  args.push("--types", DOC_TYPE);
+  const fetchLimit = overFetchLimit(input.topK);
+  if (fetchLimit !== null) args.push("--limit", String(fetchLimit));
 
   const j = await runGbrainJson<RawHit[] | RawQueryOutput>(cfg, {
     args,
@@ -96,6 +119,6 @@ export async function retrieve(
   const degraded = !Array.isArray(j) && Array.isArray((j as RawQueryOutput).degraded)
     ? ((j as RawQueryOutput).degraded as unknown[]).map(String)
     : [];
-  const hits = normalizeHits(arr).map((h) => ({ ...h, source_id: kbId }));
+  const hits = filterDocumentHits(kbId, normalizeHits(arr).map((h) => ({ ...h, source_id: kbId })), input.topK);
   return { results: hits, mode, degraded };
 }

@@ -72,6 +72,9 @@ beforeAll(() => {
     },
     onKbCreated: async () => undefined,
     onKbPurged: async () => undefined,
+    graphQuery: async () => {
+      throw new Error("not used in drift test");
+    },
     modelState: { embedding: false, rerank: false, chat: false },
     dream: {} as never,
   });

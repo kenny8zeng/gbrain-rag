@@ -79,6 +79,11 @@ us5/us6 顶部探测 `/health` 自适应跑对应分支——docling 全量回�
 | D18 | 全新实例 embedding_dimensions 空致 embed 失败 | entrypoint init 前探测注入维度 | 006 修复提交 | ✓ |
 | D19 | 租户无页面全文端点（文档与实现不符） | GET /v1/kb/:id/page?slug= 全文端点 | P6 修复提交 | ✓ |
 | D20 | gbrain CLI 升级提示混入错误输出 | runGbrain stderr 噪声剥离 | P8 修复提交 | ✓ |
+| D21 | 检索 `top_k` 不严格（请求 2 实返 5：多查询/双臂合并后未截断） | 结果侧按 `top_k` 截断 + 类型过滤 + 前缀兜底（008 阶段 2） | tests/unit/retrieval-fallback.test.ts（top_k 截断/分区过滤） | ✓ |
+| D22 | 文档存量类型漂移（导入丢 frontmatter `type` → 引擎按 slug 推断落 `concept`，文档面无法按类型过滤） | `buildMarkdown` 显式钉定 `type: note`（008 阶段 1） | tests/unit/pipeline.test.ts（钉定类型 / 覆盖正文类型） | ✓ |
+| D23 | 双链图谱恒空（实体页不存在 → 双链全被 `skipped_missing_target` 丢弃） | 导入时自动建实体页 + 显式提取兜底 + 建库开 `global_basename`（008 阶段 3） | tests/unit/entity-graph.test.ts（21 例）+ 端到端（53 目标 → 53 边） | ✓ |
+| D24 | 删除文档后实体页永久残留（引擎软删不级联、无回收机制） | `reconcileEntityStubs` 三重护栏回收 + 删除路由异步触发（008 US5） | tests/unit/entity-graph.test.ts（回收护栏/中止/自建页保护） | ✓ |
+| D25 | 无实例时集成测试门控失效（`health!` 非空断言 → Unhandled error，全量测试退出码 1） | `tests/integration/us6-priority.test.ts` 改 `health?.` 安全访问 | 全量 `bun run test` 退出码 0 | ✓ |
 
 ## 5. 首批补齐（P1 = 台账 ✗ 项）
 

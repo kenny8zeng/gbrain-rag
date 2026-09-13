@@ -9,8 +9,38 @@
 | 导入任务 | rag_jobs | 异步摄取（转换→入库→索引）；失败自动重试 3 次 |
 | 文档解析 | docling / anydoc | `DOCLING_URL` 配置则双解析器（失败自动回退）；未配置则 anydoc 唯一 |
 | 页面 | gbrain page（`<kb>/docs/<name>`） | 单文档单页面；重复导入覆盖更新（upsert，版本历史可回滚） |
+| 知识图谱 | gbrain links + 实体页 | 文档正文的 `[[双链]]` 自动连成关系图；双链指向的概念自动拥有节点页（`<kb>/entities/<name>`），供实体级多跳查询 |
 
 **权限模型**：凭证能做什么由签发时组合决定——写操作（导入/删页面）只允许在**写分区**；读操作（列表/检索）允许在**写分区 ∪ 读分区**；其余一律 403（不泄露存在性）。跨库检索自动合并，Agent 无需指定分区。
+
+### 知识图谱（双链）
+
+导入的 markdown 里写 `[[概念]]`，服务会：
+
+1. 为每个双链目标**自动创建实体页**（`<kb>/entities/<规范化名>`；已存在的页一律不动）
+2. 建边（引擎的 auto_link 在写入时即建关系，服务另做一次幂等提取兜底）
+3. 删除文档后**自动回收**"不再被任何存活文档引用"的实体页（共享节点保留）
+
+| 事实 | 说明 |
+|---|---|
+| 节点 = 页 | gbrain 的图是"页到页"；`[[电池]]` 的语义是"指向名为电池的那一页"，目标页不存在则链被丢弃 |
+| 命名规范化 | 大小写不敏感、空格→`-`、重音折叠（`[[Soleil01 SE]]` → `soleil01-se`）；中文原样保留 |
+| 文档面隔离 | 实体页对租户面**不可见**：`GET /documents` 与检索按类型 + `<kb>/docs/` 前缀双重过滤；`GET /page` 只接受 `docs/` 前缀（非本分区 422） |
+| 实体页不入检索 | 实体页不参与向量嵌入（零嵌入成本），专供图查询 |
+| 跨库隔离 | 实体页位于各库自己的 `entities/` 分区，同名概念在不同库互不串边 |
+| 派生数据 | 实体页由文档双链推导（不落磁盘、不进备份）；丢失可经重新导入文档 100% 重建 |
+
+**图查询（管理面）**：
+
+```bash
+# 实体卡：摘要 + 出/入边
+GET /v1/admin/graph/entity?name=Battery
+
+# 多跳遍历：从某页出发的关系路径
+GET /v1/admin/graph/traverse?slug=<kb>/entities/battery&depth=2&direction=both
+```
+
+Agent 侧经 MCP 可直接使用 `traverse_graph` / `entity` / `get_links` / `get_backlinks` 等工具（以 `tools/list` 实际返回为准）。
 
 ## 2. 接口平面
 
@@ -34,6 +64,7 @@
 | `GET /v1/jobs` · `/v1/jobs/:id` | 任务列表（kb/status 过滤）/详情 |
 | `/v1/admin/gbrain/*` | gbrain 引擎全量运维（55 路由；SSE 流式，只读状态路由支持 `?format=json`） |
 | `POST/GET /v1/admin/dream` | 梦境周期：手工触发一次（异步 202）/ 状态查询（运行中触发 409 `DREAM_RUNNING`） |
+| `GET /v1/admin/graph/entity` · `/v1/admin/graph/traverse` | 知识图谱：实体卡（入/出边）/ 多跳遍历（`depth`/`direction`/`link_type`） |
 | `/v1/admin/models` | 模型配置装配（POST 预检+config set 装配 / GET 状态聚合） |
 
 ### 租户面

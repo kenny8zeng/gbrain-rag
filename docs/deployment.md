@@ -139,6 +139,11 @@ RERANK_API_KEY=sk-...
 
 - `postgres` 数据卷：引擎页面/索引/凭证——**主数据**
 - `DATA_DIR`（/data/rag）：每个 KB 的 git 目录 + 导入原始文档档案
+- **知识图谱**（自动维护，无需配置）：
+  - 文档正文的 `[[双链]]` 在导入时自动连边；双链指向的概念自动获得实体页（`<kb>/entities/<name>`）
+  - 引擎开关 `link_resolution.global_basename=true` 由**建库时自动设置**（实体页位于子目录，关时双链解析为 0 边）
+  - 实体页是**派生数据**：不落磁盘、不进备份，可由文档双链 100% 重建（重新导入文档即可）；因此**备份只需覆盖 postgres + DATA_DIR**
+  - 删除文档后，其独占引用的实体页会自动回收（共享节点保留；用户自建页永不回收）
 - 备份建议：
   - 定期 `pg_dump`（或 gbrain `gbrain export` 导出 Markdown 全量）
   - 卷快照（DATA_DIR 含 git 历史，可经 `git push` 异地备份）

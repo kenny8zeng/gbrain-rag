@@ -59,11 +59,12 @@ async function importDocx(kb: string, key: string, slug: string): Promise<Record
 
 gated("US6: 解析优先级矩阵", () => {
   test("health 暴露 parser_primary/parser_preference", () => {
+    // 仅在 gated（health 非空）时执行；断言体用非空断言以满足类型
     expect(["docling", "anydoc"]).toContain(health!.parser_primary);
     expect(["docling", "anydoc"]).toContain(health!.parser_preference);
   });
 
-  if (health!.docling && health!.parser_preference === "docling") {
+  if (health?.docling && health?.parser_preference === "docling") {
     // 3000：docling 优先，primary 成功 → parser_log="docling"
     test("docling 优先：docx parser_log=docling（无回退）", async () => {
       const { kb, key } = await kbAndKey(`us6-d-${U}`);
@@ -73,7 +74,7 @@ gated("US6: 解析优先级矩阵", () => {
     }, 180_000);
   }
 
-  if (health!.docling && health!.parser_preference === "anydoc") {
+  if (health?.docling && health?.parser_preference === "anydoc") {
     // 3102：anydoc 优先
     test("anydoc 优先：docx parser_log=anydoc（不经 docling）", async () => {
       const { kb, key } = await kbAndKey(`us6-a-${U}`);
@@ -92,7 +93,7 @@ gated("US6: 解析优先级矩阵", () => {
     });
   }
 
-  if (!health!.docling && health!.parser_preference === "docling") {
+  if (!health?.docling && health?.parser_preference === "docling") {
     // 3103：docling 不可达 + docling 优先 → 回退 anydoc
     test("回退触发：docx parser_log 以 docling→anydoc 开头", async () => {
       const { kb, key } = await kbAndKey(`us6-fb-${U}`);

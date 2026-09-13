@@ -114,6 +114,7 @@ async function main(): Promise<void> {
       retrieveWithFallback(cfg, (k, i) => internalRetrieval.retrieve(k, i), kbId, input),
     onKbCreated: (kbId) => internalRetrieval.onKbCreated(kbId),
     onKbPurged: () => internalRetrieval.onKbPurged(),
+    graphQuery: (tool, args) => internalRetrieval.callTool(tool, args),
   };
 
   const app = createApp(services);

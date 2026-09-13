@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Config } from "../config";
 import { docsDir, incomingDir } from "../config";
 import { runGbrain, pageExists } from "../gbrain-cli";
+import { DOC_TYPE, EntityGraphService, entitySlug as entitySlugPath, extractWikilinkTargets } from "../entity-graph";
 import { resolveParserFor } from "./resolver";
 import { convertWithFallback, parserLogFor } from "./fallback";
 
@@ -21,6 +22,8 @@ export interface IngestOutcome {
   error?: string;
   /** 解析路径记录（primary 或回退链，md 直传为空） */
   parserLog?: string;
+  /** 建图阶段异常（不阻断文档导入成功，仅记录） */
+  graphLog?: string;
 }
 
 /** 小写、非字母数字折叠为 -、去首尾 -、≤64 字符 */
@@ -55,6 +58,9 @@ export function buildMarkdown(
   const lines = [
     "---",
     `title: ${JSON.stringify(meta.title)}`,
+    // 008：显式钉定文档类型（不依赖引擎按 slug 路径推断——本服务 slug 为
+    // <kb>/docs/<name>，`docs/` 未在任何 pack 中声明 → 推断会落 concept）
+    `type: ${DOC_TYPE}`,
     `kb: ${meta.kb}`,
     ...(meta.sourceFile ? [`source_file: ${JSON.stringify(meta.sourceFile)}`] : []),
     ...(meta.sourceUrl ? [`source_url: ${JSON.stringify(meta.sourceUrl)}`] : []),
@@ -66,13 +72,18 @@ export function buildMarkdown(
   return lines.join("\n");
 }
 
-/** 执行单个摄取任务：转换 → 规范化 → put(upsert) → embed。抛错即任务失败（worker 负责重试） */
-export async function processIngestJob(cfg: Config, job: IngestJob): Promise<IngestOutcome> {
+/** 执行单个摄取任务：建图预置 → 转换 → 规范化 → put(upsert, 连带 embed + auto_link) → 提取兜底 → 回收。抛错即任务失败（worker 负责重试） */
+export async function processIngestJob(
+  cfg: Config,
+  job: IngestJob,
+  deps?: { entityGraph?: EntityGraphService },
+): Promise<IngestOutcome> {
   let md: string;
   let baseName: string;
   let sourceFile: string | undefined;
   let sourceUrl: string | undefined;
   let parserLog: string | undefined;
+  let graphLog: string | undefined;
 
   if (job.type === "md") {
     const rawPath = path.join(incomingDir(cfg), job.sourceRef);
@@ -106,6 +117,19 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
     convertedAt: new Date().toISOString(),
   });
 
+  // ─── 008 建图层（顺序关键，见 specs/008-entity-graph-layer/plan.md）─────
+  // 引擎的双链解析要求目标页存在，且 put 的 auto_link 后钩子在写入时即建边
+  // ⇒ 必须**先建实体页、再 put 文档**。
+  // 全过程 best-effort：建图失败不回滚文档（文档导入成功与否只取决于文档本身）。
+  const graph = deps?.entityGraph ?? new EntityGraphService(cfg);
+  const wikilinks = extractWikilinkTargets(md);
+  const referenced = new Set(wikilinks.targets.map((t) => entitySlugPath(job.kbId, t.slug)));
+  try {
+    if (wikilinks.targets.length > 0) await graph.ensureEntityPages(job.kbId, wikilinks.targets);
+  } catch (e) {
+    graphLog = `entity_pages: ${(e as Error).message.slice(0, 200)}`;
+  }
+
   const existed = await pageExists(cfg, job.kbId, slug);
 
   let status: IngestOutcome["status"] = "done";
@@ -131,6 +155,7 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
         docSlug: slug,
         error: `put partially failed (embed/unreachable?): ${msg.slice(0, 300)}`,
         parserLog,
+        graphLog,
       };
     }
     throw e;
@@ -140,6 +165,25 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
   // 引擎 embed 命令忽略 GBRAIN_SOURCE env 且无公开 --source（帮助未列），显式调用恒以
   // source=default 失败并误报 done_with_warnings；put 连带 embed 失败时上方 pageExists
   // 复核分支已降级处理（页面写入但未索引 → 关键词可检索）。
+
+  // ─── 008 建图收尾：显式提取（幂等兜底）+ 孤儿回收 ─────────────────────
+  // put 的 auto_link 已建边；显式提取覆盖 auto_link 被关闭/首次失败的情形。
+  // 回收必须**在提取成功之后**——否则提取异常会让全库卡片看起来都无引用而被误删；
+  // 且 referencedByCurrentDoc 护栏：本次文档引用的实体若成为孤儿，说明该文档建图
+  // 未生效 ⇒ 整体放弃回收。
+  if (wikilinks.targets.length > 0) {
+    try {
+      await graph.runLinkExtraction(job.kbId);
+      const rec = await graph.reconcileEntityStubs(job.kbId, { referencedByCurrentDoc: referenced });
+      if (rec.aborted) {
+        console.log(JSON.stringify({ evt: "entity_reclaim_aborted", kb: job.kbId, reason: rec.aborted, candidates: rec.candidates }));
+      }
+    } catch (e) {
+      graphLog = graphLog
+        ? `${graphLog}; graph_finish: ${(e as Error).message.slice(0, 200)}`
+        : `graph_finish: ${(e as Error).message.slice(0, 200)}`;
+    }
+  }
 
   // 归档原始文件（md/url 类型仅在 md 有暂存文件时归档）
   if (job.type === "file") {
@@ -154,5 +198,5 @@ export async function processIngestJob(cfg: Config, job: IngestJob): Promise<Ing
     renameSync(src, path.join(destDir, `${slugifyName(title)}.md`));
   }
 
-  return { status, outcome: existed ? "updated" : "created", docSlug: slug, error, parserLog };
+  return { status, outcome: existed ? "updated" : "created", docSlug: slug, error, parserLog, graphLog };
 }

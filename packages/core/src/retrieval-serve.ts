@@ -1,7 +1,8 @@
 import type { Config } from "./config";
 import type { Upstream } from "./gbrain-upstream";
 import { runGbrain, runGbrainJson } from "./gbrain-cli";
-import { normalizeHits, type RetrievalInput, type RetrievalResponse } from "./retrieval";
+import { normalizeHits, filterDocumentHits, overFetchLimit, type RetrievalInput, type RetrievalResponse } from "./retrieval";
+import { DOC_TYPE } from "./entity-graph";
 
 /**
  * T049：检索走常驻 gbrain serve --http 通道（消除逐请求 CLI 进程启动）。
@@ -93,18 +94,31 @@ export class InternalRetrieval {
     this.clientSecret = null;
   }
 
+  /**
+   * 通用只读工具调用（008：图查询走 MCP `traverse_graph`/`entity`，它返回原始
+   * GraphPath[]；CLI `graph-query --direction both` 的打印器会丢入边——见 research R12）。
+   */
+  async callTool<T>(tool: string, args: Record<string, unknown>): Promise<T> {
+    const creds = await this.ensureClient();
+    if (!creds) throw new Error("internal client not ready (no kb sources)");
+    const text = await mcpToolsCall(this.cfg, this.upstream, creds, tool, args);
+    return JSON.parse(text) as T;
+  }
+
   /** serve 通道检索；失败抛错由调用方降级 */
   async retrieve(kbId: string, input: RetrievalInput): Promise<RetrievalResponse> {
     const creds = await this.ensureClient();
     if (!creds) throw new Error("internal client not ready (no kb sources)");
     const mode = input.mode ?? "hybrid";
     const tool = mode === "keyword" ? "search" : "query";
-    const args: Record<string, unknown> = { query: input.query, source_id: kbId };
-    if (input.topK && input.topK > 0) args.limit = Math.min(input.topK, 100);
+    // 文档面（008）：类型过滤挡实体页；过取补偿位次竞争；结果侧再做前缀兜底与 top_k 截断
+    const args: Record<string, unknown> = { query: input.query, source_id: kbId, types: [DOC_TYPE] };
+    const fetchLimit = overFetchLimit(input.topK);
+    if (fetchLimit !== null) args.limit = fetchLimit;
 
     const text = await mcpToolsCall(this.cfg, this.upstream, creds, tool, args);
     const parsed = JSON.parse(text) as Array<Record<string, unknown>>;
-    const hits = normalizeHits(Array.isArray(parsed) ? parsed : []).map((h) => ({ ...h, source_id: kbId }));
+    const hits = filterDocumentHits(kbId, normalizeHits(Array.isArray(parsed) ? parsed : []).map((h) => ({ ...h, source_id: kbId })), input.topK);
     return { results: hits, mode, degraded: [] };
   }
 }

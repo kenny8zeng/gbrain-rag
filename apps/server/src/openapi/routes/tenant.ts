@@ -6,6 +6,7 @@ import { libHandler } from "../handler";
 import { canReadKb, canWriteKb } from "../../middleware/auth";
 import { ensureKbActive, KbNotFoundError, KbArchivedError } from "@core/kb";
 import { CliError, runGbrain, runGbrainJson } from "@core/gbrain-cli";
+import { DOC_TYPE, isDocSlug, EntityGraphService } from "@core/entity-graph";
 import { resolveParserFor } from "@core/ingest/resolver";
 import { ParserUnavailableError } from "@core/ingest/parser";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -253,9 +254,10 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
     } catch (e) {
       return kbState(c, e);
     }
-    // gbrain list --json 输出为 tab 分隔文本（slug	type	date	title），非 JSON
+    // 文档面（008）：SQL 层按类型过滤（使 --limit 只对文档生效，不被实体页挤占）；
+    // 结果侧再做 `docs/` 前缀兜底（结构保证）
     const r = await runGbrain(svc.cfg, {
-      args: ["list", "--limit", "200"],
+      args: ["list", "--type", DOC_TYPE, "--limit", "10000"],
       source: kbId,
       timeoutMs: 30_000,
     });
@@ -263,7 +265,8 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       .split("\n")
       .map((line) => line.split("\t"))
       .filter((cols) => cols.length >= 1 && cols[0]!.trim().length > 0)
-      .map((cols) => ({ slug: cols[0]!.trim(), type: cols[1]?.trim() ?? null, date: cols[2]?.trim() ?? null, title: cols[3]?.trim() ?? null }));
+      .map((cols) => ({ slug: cols[0]!.trim(), type: cols[1]?.trim() ?? null, date: cols[2]?.trim() ?? null, title: cols[3]?.trim() ?? null }))
+      .filter((p) => isDocSlug(kbId, p.slug));
     return c.json({ kb_id: kbId, pages });
   }));
 
@@ -340,6 +343,18 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       return kbState(c, e);
     }
     await runGbrain(svc.cfg, { args: ["delete", slug], source: kbId, timeoutMs: 60_000 });
+    // 008：文档软删后实体页不会自动回收。异步回收"不再被任何存活页引用"的
+    // 自动创建实体页（先重跑提取，使图与删除后的事实一致；失败仅告警）。
+    void new EntityGraphService(svc.cfg)
+      .reclaimAfterDocDelete(kbId)
+      .then((r) => {
+        if (r.reclaimed.length > 0 || r.aborted) {
+          console.log(JSON.stringify({ evt: "doc_delete_reclaim", kb: kbId, reclaimed: r.reclaimed.length, candidates: r.candidates, aborted: r.aborted }));
+        }
+      })
+      .catch((e: unknown) => {
+        console.log(JSON.stringify({ evt: "doc_delete_reclaim_failed", kb: kbId, error: (e as Error).message.slice(0, 200) }));
+      });
     return c.body(null, 204);
   }));
 
@@ -406,7 +421,10 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
     if (!parsed.success) {
       return c.json({ error: { code: "INVALID_PARAMS", message: "query (1-2000 chars) is required" } }, 422);
     }
-    const result = await svc.retrieve(kbId, parsed.data);
+    // 契约字段是 snake_case（top_k），内部 RetrievalInput 是驼峰（topK）——
+    // 不映射则 topK 恒 undefined，过取与截断静默失效（P10 根因）
+    const { query, mode, top_k } = parsed.data;
+    const result = await svc.retrieve(kbId, { query, mode, topK: top_k });
     return c.json(result);
   }));
 }

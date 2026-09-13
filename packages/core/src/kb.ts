@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Config } from "./config";
 import { brainDir, docsDir } from "./config";
 import { runGbrain, runGbrainJson } from "./gbrain-cli";
+import { EntityGraphService } from "./entity-graph";
 import type { DB } from "./db";
 
 export interface KbSummary {
@@ -133,6 +134,15 @@ export async function createKb(cfg: Config, db: DB, name: string): Promise<KbSum
   invalidateSourceCache();
   await runGbrain(cfg, { args: ["sources", "add", id, "--path", dir], timeoutMs: 60_000 });
   invalidateSourceCache();
+
+  // 008：实体页位于 <kb>/entities/ 子目录，裸双链 `[[Name]]` 需引擎按 basename 解析
+  // （默认关闭；关闭时双链解析为 0 条边）。幂等 set，失败仅告警——建图能力降级，
+  // 但不阻断建库（文档导入/检索不受影响）。
+  try {
+    await new EntityGraphService(cfg).ensureGlobalBasename();
+  } catch (e) {
+    console.log(JSON.stringify({ evt: "global_basename_enable_failed", kb: id, error: (e as Error).message.slice(0, 200) }));
+  }
 
   return { id, name, status: "active", pageCount: 0, lastSyncAt: null };
 }
