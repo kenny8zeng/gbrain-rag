@@ -84,6 +84,8 @@ us5/us6 顶部探测 `/health` 自适应跑对应分支——docling 全量回�
 | D23 | 双链图谱恒空（实体页不存在 → 双链全被 `skipped_missing_target` 丢弃） | 导入时自动建实体页 + 显式提取兜底 + 建库开 `global_basename`（008 阶段 3） | tests/unit/entity-graph.test.ts（21 例）+ 端到端（53 目标 → 53 边） | ✓ |
 | D24 | 删除文档后实体页永久残留（引擎软删不级联、无回收机制） | `reconcileEntityStubs` 三重护栏回收 + 删除路由异步触发（008 US5） | tests/unit/entity-graph.test.ts（回收护栏/中止/自建页保护） | ✓ |
 | D25 | 无实例时集成测试门控失效（`health!` 非空断言 → Unhandled error，全量测试退出码 1） | `tests/integration/us6-priority.test.ts` 改 `health?.` 安全访问 | 全量 `bun run test` 退出码 0 | ✓ |
+| D26 | 租户无图谱检索通道（能力只在 `/v1/admin/graph/*`）——租户的确定性检索链走 REST，拿不到图 | 新增租户面 `GET /v1/kb/:id/graph/traverse`（读授权 + 双重收敛：起点 slug 属可读库 ∧ 返回路径两端均在可读库内） | 集成/生产实测：越权 422、跨租户零泄漏 | ✓ |
+| D27 | MCP 文档面泄漏实体页（`list_pages` 混入 93 实体页；`search` top-1 即实体页） | `mcp-gateway.ts` 改写 `tools/call` 体：`search`/`query` 注入 `types`、`list_pages` 注入 `type`；图工具不触碰；显式类型不覆盖 | `tests/unit/mcp-gateway.test.ts`（7 例）+ 生产实测修复前后对比 | ✓ |
 
 ## 5. 首批补齐（P1 = 台账 ✗ 项）
 

@@ -70,6 +70,14 @@
 - [X] T031 核对生产：`link-sources` 非空、边数与文档双链对数量级一致、`sources/status` 覆盖度 100%
 - [X] T032 关联项目 5 项验收复测（写/幂等重传/URL/图片/覆盖度）——确认 SC-006 文档面语义零变化
 
+## Phase 5b: 租户图谱通道与 MCP 过滤（用户指出消费者是租户后追加）
+
+- [X] T027a [US3] 租户面 `GET /v1/kb/{id}/graph/traverse`（读授权 + 起点属可读库 + 返回路径两端收敛到可读库）
+- [X] T027b [US3] 生产验证：越权 422；reader key（三库可读）结果仅含授权库；faq 库 brake 遍历 241 路径 / 2 文档
+- [X] T027c [US1] `mcp-gateway.ts`：`rewriteDocPlaneCall` 纯函数——对 `search`/`query`/`list_pages` 注入文档类型，图工具/非 tools-call/显式类型均不改写
+- [X] T027d [P] [US1] `tests/unit/mcp-gateway.test.ts`：7 例（注入语义、逃生阀、图工具豁免、批量请求、非法 JSON）
+- [X] T027e [US1] 生产验证：`list_pages` 93→0 实体页；`search` top-1 实体页→0；`traverse_graph` 537 路径不变
+
 ## Phase 8: 收尾
 
 - [X] T033 文档同步：`docs/usage.md`（图谱与隔离说明）、`docs/deployment.md`（实体层 + 引擎开关）、README 中英同构

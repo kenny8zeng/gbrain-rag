@@ -64,16 +64,19 @@ gbrain **没有**内建的中英同义收敛（research R10）。语料 `cn/` �
 
 > 建议 **A** 起步，B 作为可选的后续阶段（引擎自带 `gbrain enrich`）。
 
-### D4 图查询能力暴露面
+### D4 图查询能力暴露面（已修订：原 A 方案不足）
 
-现状：租户 key 经 MCP 已能看到 `traverse_graph`/`entity`/`list_pages`（实测），但租户**不会**看到被 `types` 过滤的实体页——只在直连 MCP 时可见。
+**修订原因**（用户指出"最终使用图谱检索内容的是租户"，实测复核）：原 A 方案（HTTP 隔离 + MCP 现状不变）**不够**——① 能力只在管理面，租户**无**图谱通道（其确定性检索链走 REST，拿不到图）；② MCP 文档面**泄漏**实体页（实测 `list_pages` 混入 93 个实体页、`search` top-1 即实体页）。
 
-| 选项 | 说明 |
+**最终方案**（两者都做）：
+
+| 层 | 措施 |
 |---|---|
-| **A. HTTP 隔离 + 保留 MCP 现状**（建议） | 关联项目主路径（HTTP 文档 API）纯净；MCP 直连者可用图工具（多跳可用） |
-| B. 额外收紧 MCP 工具集 | 文档面更严；但关联项目若要用多跳需另开口径 |
+| 租户 REST | 新增 `GET /v1/kb/{id}/graph/traverse`（读授权 + **双重收敛**：起点 slug 属可读库 ∧ 返回路径两端均在可读库内——内部 client 是 federated 全库，不收敛会跨租户泄漏） |
+| MCP | 网关改写 `tools/call` 体，对 `search`/`query`/`list_pages` 注入文档类型；图工具（`traverse_graph`/`get_links`/`get_backlinks`/`entity`）不触碰；调用方显式指定类型时不覆盖 |
+| 管理面 | 保留 `/v1/admin/graph/*`（运维/调试，全库视角） |
 
-> 建议 **A**：满足"多跳"且不改既有能力边界。
+**为何必须在网关层做**：引擎读侧无 slug 栅栏（`--bound-slug-prefixes` 仅 write-side）、无类型排除配置，`types` 是唯一可用的**包含式白名单**。
 
 ### D5 实体页回收策略（删除文档后）
 
