@@ -317,7 +317,20 @@ DB slug: kb-86e4c440/docs/doc-two
 
 **生产验证**（26 并发提交，同一库）：全部 202、26/26 任务 `done`；日志 `exited with 143` / `unhandled_error` / 闸门降级 **均为 0**；最终 13 文档 / 98 实体页（幂等）。
 
-## R19 既有缺陷与本方案的交集
+## R19 图谱增强检索的排序：原始共现计数会被高频概念主导
+
+**实测（生产 faq 库，seed = 故障排查文档）**：按 `shared_concepts` 原始计数排序时，`graph_results` 被品牌名主导（`adria26`/`ict`/`soleil01` 几乎每篇文档都出现）——共现高但信息量近零。
+
+**修正**：按概念**泛化度**加权——`weight = Σ 1/fanout(概念)`，`fanout` = 该概念在本轮连到的相邻文档数（IDF 代理，可由手上的遍历数据直接算出，无需全库统计）。实测效果：
+
+| 概念 | fanout | 贡献 |
+|---|---|---|
+| `soleil01`（hub） | 大 | ≈0.07 |
+| `troubleshooting`（专有） | 1 | 1.0 |
+
+排序依据改为 `weight`；`shared_concepts` 仍作为事实回报。**注意**：这是启发式——概念级的相关性需要概念自身的向量（而实体页按设计**不嵌入**），故响应同时给出 `via_concepts`，调用方应按它判断相关性。
+
+## R20 既有缺陷与本方案的交集
 
 - **P10**：`/v1/kb/:id/retrieval` 请求 `top_k=2` 实测返回 5 条——`retrieval-serve.ts` 只把 `topK` 传给 `limit`，未对最终结果截断（多查询/双臂合并后超量）。→ 纳入 FR-011。
 - **N4**：向量层为空时 hybrid 不报 `degraded`（`degraded: []`），但关键词臂仍返回——`sources/status` 的 `embed_coverage_pct` 可作外部判据。→ 可选增强，不在本期硬指标。

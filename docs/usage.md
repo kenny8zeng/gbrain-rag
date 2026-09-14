@@ -41,7 +41,7 @@ curl -X POST "$BASE/v1/kb/$KB/retrieval" -H "X-API-Key: $KEY" \
   -d '{"query":"brake abnormal noise","mode":"hybrid","top_k":1,
        "graph":{"depth":2,"seed_k":3,"max_results":10}}'
 # → {"results":[{slug,title,snippet,score,source_id}],          ← 向量排名（保持不变）
-#    "graph_results":[{slug,via_concepts,seed_slugs,shared_concepts}],  ← 图谱发现（新增）
+#    "graph_results":[{slug,via_concepts,seed_slugs,shared_concepts,weight}], ← 图谱发现（新增）
 #    "mode":"hybrid","degraded":[]}
 ```
 
@@ -51,7 +51,16 @@ curl -X POST "$BASE/v1/kb/$KB/retrieval" -H "X-API-Key: $KEY" \
 | `seed_k` | 全部结果 | 用向量前 N 条做种子 |
 | `max_results` | 10 | 图谱发现上限 |
 
-**为何不合并成一个数组**：图谱命中是**推导出的关联**而非排序结果（无向量分）。混排会凭空造分数，因此独立数组 + 溯源（`via_concepts` 连接概念、`seed_slugs` 来自哪篇、`shared_concepts` 共现强度），由调用方按 token 预算自行取舍。
+**为何不合并成一个数组**：图谱命中是**推导出的关联**而非排序结果（无向量分）。混排会凭空造分数，因此独立数组 + 溯源：
+
+| 字段 | 含义 |
+|---|---|
+| `via_concepts` | 把该文档与种子文档连起来的概念（**最该看这个**） |
+| `seed_slugs` | 由哪几篇种子文档发现 |
+| `shared_concepts` | 共现概念数（原始计数，事实） |
+| `weight` | 特异性加权分 = `Σ 1/fanout(概念)`，**排序依据**。`fanout` = 该概念在本轮连到多少篇相邻文档——品牌名之类无处不在的概念 fanout 大、贡献趋 0（实测某库 `soleil01` 仅贡献 ≈0.07，而 `troubleshooting` 贡献 1.0）；专有概念贡献接近 1 |
+
+> 排序是启发式：`weight` 用于排序，但**判断相关性请优先看 `via_concepts`**——它直接告诉你这两篇文档是因为哪个概念被联系起来的。
 
 **实测**（`top_k=1`，逼向量只给 1 篇）：
 ```
