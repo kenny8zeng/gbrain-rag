@@ -178,7 +178,7 @@ export function hasEntityMarkerIn(content: string): boolean {
   return new RegExp(`^${ENTITY_MARKER_KEY}\\s*:\\s*["']?${ENTITY_MARKER_VALUE}`, "m").test(fm);
 }
 
-function entityStub(title: string): string {
+export function entityStub(title: string): string {
   return [
     "---",
     `title: ${JSON.stringify(title)}`,

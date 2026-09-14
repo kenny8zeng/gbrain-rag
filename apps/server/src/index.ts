@@ -14,6 +14,7 @@ import { DreamRunner } from "@core/dream";
 import { createApp, type Services } from "./app";
 import { startSupervisor } from "./supervisor";
 import { startWorker } from "./worker";
+import { processBulkJob } from "@core/ingest/bulk";
 
 const cfg = loadConfig();
 
@@ -122,7 +123,8 @@ async function main(): Promise<void> {
 
   const app = createApp(services);
 
-  const worker = startWorker(cfg, db, (job) => processIngestJob(cfg, job));
+  // bulk 类型走批量执行体（单次 import + 建边）；其余为逐篇摄取
+  const worker = startWorker(cfg, db, (job) => (job.type === "bulk" ? processBulkJob(cfg, job) : processIngestJob(cfg, job)));
 
   const server = Bun.serve({ port: cfg.PORT, fetch: app.fetch });
   console.log(JSON.stringify({ evt: "listening", port: cfg.PORT }));

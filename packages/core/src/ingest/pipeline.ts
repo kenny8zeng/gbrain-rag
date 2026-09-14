@@ -11,7 +11,7 @@ import { convertWithFallback, parserLogFor } from "./fallback";
 export interface IngestJob {
   id: string;
   kbId: string;
-  type: "file" | "url" | "md";
+  type: "file" | "url" | "md" | "bulk";
   sourceRef: string;
   title: string | null;
 }
@@ -25,6 +25,8 @@ export interface IngestOutcome {
   parserLog?: string;
   /** 建图阶段异常（不阻断文档导入成功，仅记录） */
   graphLog?: string;
+  /** bulk：导入摘要 JSON（import + extract links 计数），写入 rag_jobs.result_summary */
+  resultSummary?: string;
 }
 
 /**
@@ -86,7 +88,7 @@ export function stripFrontmatter(md: string): string {
 
 export function buildMarkdown(
   md: string,
-  meta: { title: string; kb: string; sourceFile?: string; sourceUrl?: string; convertedAt: string },
+  meta: { title: string; kb: string; sourceFile?: string; sourceUrl?: string; convertedAt?: string },
 ): string {
   const body = stripFrontmatter(md);
   const lines = [
@@ -98,7 +100,7 @@ export function buildMarkdown(
     `kb: ${meta.kb}`,
     ...(meta.sourceFile ? [`source_file: ${JSON.stringify(meta.sourceFile)}`] : []),
     ...(meta.sourceUrl ? [`source_url: ${JSON.stringify(meta.sourceUrl)}`] : []),
-    `converted_at: ${meta.convertedAt}`,
+    ...(meta.convertedAt ? [`converted_at: ${meta.convertedAt}`] : []),
     "---",
     "",
     body.trimStart(),

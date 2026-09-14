@@ -71,6 +71,7 @@ export const JobView = z.object({
   error: z.string().nullable(),
   outcome: z.string().nullable(),
   doc_slug: z.string().nullable(),
+  result_summary: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -81,6 +82,21 @@ export const SubmitAccepted = z.object({
   job_id: z.string(),
   kb_id: z.string(),
   status: z.string(),
+});
+
+export const BulkAccepted = z.object({
+  job_id: z.string(),
+  kb_id: z.string(),
+  files: z.number(),
+  entities: z.number(),
+  status: z.string(),
+});
+
+export const BulkDryRunView = z.object({
+  kb_id: z.string(),
+  files: z.array(z.object({ file: z.string(), slug: z.string() })),
+  entities: z.number(),
+  skipped: z.array(z.object({ file: z.string(), reason: z.string() })),
 });
 
 export const UrlImportBody = z.object({ url: z.url(), title: z.string().optional() });

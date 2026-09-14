@@ -19,7 +19,7 @@ RUN bun install --frozen-lockfile
 # ---- stage 3: 运行层 ----
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates \
+    && apt-get install -y --no-install-recommends git ca-certificates bzip2 xz-utils zstd \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1000 rag \
     && mkdir -p /data/rag && chown rag:rag /data/rag

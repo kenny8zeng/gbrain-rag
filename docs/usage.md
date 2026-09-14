@@ -144,6 +144,7 @@ Agent 侧经 MCP 可用 `traverse_graph` / `entity` / `get_links` / `get_backlin
 | 方法/路径 | 作用 | 权限 |
 |---|---|---|
 | `POST /v1/kb/:id/documents` | 导入（multipart 文件 / `{url}` / text-markdown） | 写分区 |
+| `POST /v1/kb/:id/documents/bulk` | **批量导入**（tar 归档 md，`dry_run=true` 仅校验） | 写分区 |
 | `GET /v1/kb/:id/documents` | 页面列表 | 读授权 |
 | `GET /v1/kb/:id/page?slug=...` | **页面全文**（markdown，slug 须属本 kb） | 读授权 |
 | `DELETE /v1/kb/:id/documents/docs/:name` | 删除页面 | 写分区 |
@@ -164,6 +165,31 @@ curl -d '{"url":"https://example.com/doc"}' http://.../v1/kb/$KB/documents
 # X-Slug 仅允许 ASCII（字母/数字/._-）；中文标题请用正文首行 #（非 ASCII slug 显式 422）
 curl -H 'Content-Type: text/markdown' -H 'X-Slug: notes' --data-binary @note.md ...
 ```
+
+
+
+## 批量导入（bulk）
+
+一次请求导入整棵 md 目录树（清库重放 / 初始灌库场景，实测 185 篇 ≈ 15.5min 的逐篇导入压缩到 ~70s）：
+
+```bash
+tar -czf corpus.tar.gz -C 语料目录 .
+curl -X POST "$BASE/v1/kb/$KB/documents/bulk" \
+  -H "X-API-Key: $KEY" -F "file=@corpus.tar.gz"
+# → 202 { job_id, files, entities }；进度/摘要轮询 jobs/:jobId（result_summary 含逐阶段计数）
+```
+
+| 项 | 规则 |
+|---|---|
+| 归档格式 | `tar -xf` 可自动探测的格式（`.tar.gz/.tgz`、`.tar.zst`、`.tar.bz2/.tbz2`、`.tar.xz`、`.tar`）——镜像内已随装 `gzip/zstd/bzip2/xz` |
+| 内容 | **仅收 `*.md`**；其它格式跳过并上报（格式转换是调用方责任），全归档无 md → 422 `NO_MARKDOWN` |
+| slug | `slugifyName(剥离前缀后的相对路径 stem)`——与逐篇接口「title=相对路径」产出完全一致；两个文件归一化同 slug → 422 `SLUG_COLLISION`（不静默覆盖） |
+| 实体页 | 服务端从 `[[双链]]` 目标自动派生（`auto_generated`），客户端不参与 |
+| 图谱边 | import 不建边 → 导入后服务端自动跑一次 `extract links` 幂等补齐（目标不存在的引用永不持久化） |
+| 幂等 | staging 字节稳定（无时间戳元数据）→ 重复提交触发 import checkpoint，已导入页零重复 embed |
+| 语义 | **upsert**：归档外已有文档不受影响；镜像语义（清掉归档外文档）= 先 purge 再重放 |
+| 校验 | `dry_run=true` 只返回 `原名 → slug` 映射 + skipped 清单，不落库（迁移前自检） |
+| 防御 | 拒绝对绝对路径 / `..` / 符号链接成员（422 `UNSAFE_ARCHIVE`）；文件数上限 `BULK_MAX_FILES`（默认 500）；解压后总量 ≤ `MAX_UPLOAD_BYTES` |
 
 ### 页面命名（slug）
 
@@ -231,7 +257,7 @@ POST /v1/kb/{id}/retrieval
 | UPSTREAM_BUSY | 503 | 知识引擎容量饱和（CLI 并发闸门排满，可重试） |
 | INTERNAL | 500 | 服务端错误（日志含详情） |
 
-**引擎容量与并发**：所有 `gbrain` CLI 调用经**全局并发闸门**（默认 3，`GBRAIN_CLI_CONCURRENCY`）——每个调用是独立进程（~1s 启动 CPU + 常驻内存），且 `put` 期间挂着外部嵌入请求。排队超过 `GBRAIN_CLI_QUEUE_WAIT_MS`（默认 60s）即返回 503 而非无限等待。大批量导入请**顺序提交**并轮询任务；建图收尾（建边兜底 + 孤儿回收的全库扫描）按 `GRAPH_SETTLE_MS`（默认 60s）去抖。
+**引擎容量与并发**：所有 `gbrain` CLI 调用经**全局并发闸门**（默认 3，`GBRAIN_CLI_CONCURRENCY`）——每个调用是独立进程（~1s 启动 CPU + 常驻内存），且 `put` 期间挂着外部嵌入请求。排队超过 `GBRAIN_CLI_QUEUE_WAIT_MS`（默认 60s）即返回 503 而非无限等待。大批量数据灌库请用**批量导入 API**（`documents/bulk`，见上节）；逐篇导入请顺序提交并轮询任务；建图收尾（建边兜底 + 孤儿回收的全库扫描）按 `GRAPH_SETTLE_MS`（默认 60s）去抖。
 
 **删除语义**：`DELETE /v1/kb/:id` → 200 `{"status":"archived"}`（**归档非物理删除**，72h 保留可恢复）；物理清除走 `POST /v1/kb/:id/purge`（有引用凭证时 `?force=true` 联动吊销）。凭证吊销后 401（`invalid api key`），与"凭证不存在"同响应（不泄露存在性）。
 

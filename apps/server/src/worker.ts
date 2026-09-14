@@ -9,10 +9,11 @@ export interface WorkerHandle {
 interface JobDbRow {
   id: string;
   kb_id: string;
-  type: "file" | "url" | "md";
+  type: "file" | "url" | "md" | "bulk";
   source_ref: string;
   title: string | null;
   attempts: number;
+  result_summary: string | null;
 }
 
 function toJob(r: JobDbRow): IngestJob {
@@ -81,7 +82,8 @@ export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Pr
           UPDATE rag_jobs
           SET status = ${outcome.status}, outcome = ${outcome.outcome ?? null},
               doc_slug = ${outcome.docSlug ?? null}, error = ${outcome.error ?? null},
-              parser_log = ${outcome.parserLog ?? null}, updated_at = now()
+              parser_log = ${outcome.parserLog ?? null}, result_summary = ${outcome.resultSummary ?? null},
+              updated_at = now()
           WHERE id = ${job.id}
         `;
       } catch (e) {

@@ -9,10 +9,21 @@ import { CliBusyError, CliError, runGbrain, runGbrainJson } from "@core/gbrain-c
 import { DOC_TYPE, isDocSlug, EntityGraphService } from "@core/entity-graph";
 import { resolveParserFor } from "@core/ingest/resolver";
 import { ParserUnavailableError } from "@core/ingest/parser";
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+  applyStrip,
+  buildBulkStage,
+  listArchiveFiles,
+  newBulkTempDir,
+  planBulkDocs,
+  validateArchiveMemberNames,
+  validateArchiveMemberTypes,
+} from "@core/ingest/bulk";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import {
+  BulkAccepted,
+  BulkDryRunView,
   ErrorEnvelope,
   JobView,
   RetrievalBody,
@@ -51,6 +62,7 @@ function jobJson(r: Record<string, unknown>) {
     error: r.error,
     outcome: r.outcome,
     doc_slug: r.doc_slug,
+    result_summary: r.result_summary ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at,
     parser_log: r.parser_log ?? null,
@@ -429,6 +441,141 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       return from !== null && to !== null && allowed.has(from) && allowed.has(to);
     });
     return c.json({ paths });
+  }));
+
+  // 批量导入（写）：tar 归档 md。服务端 slug 归位 + 实体页派生 + 单次 import（含 embed）+ 一次建边。
+  // import 不建双链边 → 边由 extract links 幂等补齐（目标不存在的引用永不持久化，与 put auto_link 同语义）。
+  // upsert 语义：归档外已有文档不受影响；镜像语义（清掉归档外文档）走 purge + 重放。
+  const bulkSubmit = createRoute({
+    method: "post",
+    path: "/v1/kb/{id}/documents/bulk",
+    tags: ["tenant"],
+    summary: "批量导入 md 归档（tar -xf 可探测格式；服务端建实体页与图谱边）",
+    middleware: [tenant],
+    security: [{ apiKey: [] }],
+    request: {
+      params: KbIdParam,
+      body: {
+        required: true,
+        content: {
+          "multipart/form-data": {
+            schema: z.object({
+              file: z.unknown().openapi({ format: "binary" }).optional().describe("必填（服务端校验）：tar 归档"),
+              strip: z.string().optional().describe("剥离归档内公共前缀；缺省自动探测唯一顶层目录"),
+              dry_run: z.string().optional().describe('"true" 时只返回 slug 映射，不导入'),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: { description: "dry_run 校验结果", content: { "application/json": { schema: BulkDryRunView } } },
+      202: { description: "已受理", content: { "application/json": { schema: BulkAccepted } } },
+      ...err403(),
+      ...err404("知识库不存在"),
+      ...err410(),
+      413: { description: "归档或解压后超过大小/数量上限", content: { "application/json": { schema: ErrorEnvelope } } },
+      422: { description: "归档不可读 / 不安全 / 无有效 md / slug 冲突", content: { "application/json": { schema: ErrorEnvelope } } },
+    },
+  });
+  app.openapi(bulkSubmit, libHandler<typeof bulkSubmit>(async (c) => {
+    const kbId = c.req.param("id")!;
+    const key = c.get("keyRow");
+    if (!canWriteKb(key, kbId)) {
+      return c.json({ error: { code: "FORBIDDEN", message: "import requires the write partition" } }, 403);
+    }
+    try {
+      await ensureKbActive(svc.cfg, kbId);
+    } catch (e) {
+      return kbState(c, e);
+    }
+    const body = await c.req.parseBody();
+    const file = body["file"];
+    if (!(file instanceof File)) {
+      return c.json({ error: { code: "INVALID_PARAMS", message: 'multipart field "file" is required' } }, 422);
+    }
+    if (file.size > svc.cfg.MAX_UPLOAD_BYTES) {
+      return c.json({ error: { code: "PAYLOAD_TOO_LARGE", message: `archive exceeds ${svc.cfg.MAX_UPLOAD_BYTES} bytes` } }, 413);
+    }
+    const dryRun = body["dry_run"] === "true";
+    const strip = typeof body["strip"] === "string" ? (body["strip"] as string) : undefined;
+
+    mkdirSync(incomingDir(svc.cfg), { recursive: true });
+    const incoming = incomingDir(svc.cfg);
+    const archivePath = path.join(incoming, `${Date.now()}-${randomHex(6)}-bulk.tar`);
+    writeFileSync(archivePath, Buffer.from(await file.arrayBuffer()));
+    const rawDir = newBulkTempDir(incoming, "raw");
+    let stageDir: string | null = null;
+    let accepted = false;
+    try {
+      // 格式探测委托给 tar（-tf 列成员本身即验证可读性）； supported 集 = 镜像内 tar -xf 可解的格式
+      const list = Bun.spawnSync(["tar", "-tf", archivePath], { stdout: "pipe", stderr: "pipe" });
+      const tv = Bun.spawnSync(["tar", "-tvf", archivePath], { stdout: "pipe", stderr: "pipe" });
+      if (list.exitCode !== 0 || tv.exitCode !== 0) {
+        const detail = `${list.stderr.toString()}${tv.stderr.toString()}`.trim().slice(0, 200);
+        return c.json({ error: { code: "UNSUPPORTED_ARCHIVE", message: `tar cannot read archive: ${detail || "not a tar stream"}` } }, 422);
+      }
+      const violations = [
+        ...validateArchiveMemberNames(list.stdout.toString().split("\n")),
+        ...validateArchiveMemberTypes(tv.stdout.toString().split("\n")),
+      ];
+      if (violations.length > 0) {
+        return c.json({ error: { code: "UNSAFE_ARCHIVE", message: `archive rejected: ${violations.slice(0, 5).join("; ")}` } }, 422);
+      }
+      // 解包（这一步就是格式探测的执行点；不支持/损坏的流已在 -tf 处被拒）
+      const extraction = Bun.spawnSync(["tar", "-xf", archivePath, "-C", rawDir], { stdout: "pipe", stderr: "pipe" });
+      if (extraction.exitCode !== 0) {
+        const detail = extraction.stderr.toString().trim().slice(0, 200);
+        return c.json({ error: { code: "UNSUPPORTED_ARCHIVE", message: `tar extraction failed: ${detail}` } }, 422);
+      }
+      const rels = listArchiveFiles(rawDir);
+      const stripped = applyStrip(rels, strip);
+      const srcByStripped = new Map(stripped.map((name, i) => [name, rels[i]!]));
+      const plan = planBulkDocs(stripped);
+      if (plan.collisions.length > 0) {
+        const first = plan.collisions[0]!;
+        const more = plan.collisions.length > 1 ? ` (+${plan.collisions.length - 1} more)` : "";
+        return c.json({ error: { code: "SLUG_COLLISION", message: `files normalize to the same slug "${first.slug}": ${first.rels.join(", ")}${more}` } }, 422);
+      }
+      if (plan.docs.length === 0) {
+        return c.json({ error: { code: "NO_MARKDOWN", message: "archive contains no .md file (bulk import accepts markdown only; convert other formats client-side)" } }, 422);
+      }
+      if (plan.docs.length > svc.cfg.BULK_MAX_FILES) {
+        return c.json({ error: { code: "PAYLOAD_TOO_LARGE", message: `${plan.docs.length} md files exceed BULK_MAX_FILES=${svc.cfg.BULK_MAX_FILES}` } }, 413);
+      }
+      stageDir = newBulkTempDir(incoming, "stage");
+      let entities: Array<{ slug: string; title: string }>;
+      try {
+        ({ entities } = buildBulkStage({
+          rawDir,
+          stageDir,
+          kbId,
+          docs: plan.docs,
+          maxTotalBytes: svc.cfg.MAX_UPLOAD_BYTES,
+          resolveSrc: (rel) => srcByStripped.get(rel) ?? rel,
+        }));
+      } catch (e) {
+        stageDir = null; // buildBulkStage 失败时已自行清理 stage
+        const msg = (e as Error).message ?? "staging failed";
+        if (msg.includes("exceeds")) return c.json({ error: { code: "PAYLOAD_TOO_LARGE", message: msg } }, 413);
+        throw e;
+      }
+      if (dryRun) {
+        return c.json({
+          kb_id: kbId,
+          files: plan.docs.map((d) => ({ file: d.rel, slug: `${kbId}/docs/${d.slug}` })),
+          entities: entities.length,
+          skipped: plan.skipped.map((sk) => ({ file: sk.rel, reason: sk.reason })),
+        }, 200);
+      }
+      const job = await svc.submitJob({ kbId, type: "bulk", sourceRef: stageDir, title: file.name ?? null });
+      accepted = true;
+      return c.json({ job_id: job.id, kb_id: kbId, files: plan.docs.length, entities: entities.length, status: job.status }, 202);
+    } finally {
+      rmSync(archivePath, { force: true });
+      rmSync(rawDir, { recursive: true, force: true });
+      if (!accepted && stageDir !== null) rmSync(stageDir, { recursive: true, force: true });
+    }
   }));
 
   // 任务状态

@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Added
+- **批量导入 API（009）**：`POST /v1/kb/{id}/documents/bulk`——tar 归档 md 一次导入（`tar -xf` 可探测格式，镜像新增 zstd/bzip2/xz）。服务端 slug 归位（与逐篇接口同规则）+ 双链目标实体页派生 + 单次 import + `extract links` 幂等建边；`dry_run=true` 返回 slug 映射自检；幂等可续传（staging 字节稳定触发 import checkpoint）；upsert 语义；`SLUG_COLLISION`/`NO_MARKDOWN`/`UNSAFE_ARCHIVE` 防御性拒绝。迁移 `0003`（job type `bulk` + `result_summary`）。实测 185 篇 15.5min → ~70s
 
 - **知识图谱（008）**：文档正文的 `[[概念]]` 在导入时自动建图——为缺失目标创建实体页（`<kb>/entities/<规范名>`，类型 `concept` + 来源标记），并由引擎写入关系边；删除文档后自动回收「不再被任何存活文档引用」的自动创建实体页（共享节点保留、用户自建页永不回收）
 - 租户面图谱检索：`GET /v1/kb/{id}/graph/traverse`（受读授权管控，返回关系路径含 `context` 原文出处；起点与返回路径均收敛到该 key 可读的库内）

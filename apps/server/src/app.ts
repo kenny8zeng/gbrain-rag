@@ -31,7 +31,7 @@ export interface Services {
   doclingOk: () => Promise<boolean>;
   modelState: ModelConfigState;
   dream: DreamRunner;
-  submitJob: (input: { kbId: string; type: "file" | "url" | "md"; sourceRef: string; title?: string | null }) => Promise<{ id: string; status: string }>;
+  submitJob: (input: { kbId: string; type: "file" | "url" | "md" | "bulk"; sourceRef: string; title?: string | null }) => Promise<{ id: string; status: string }>;
   /** 检索；input.graph 存在时同一次调用内追加图谱增强结果 */
   retrieve: (kbId: string, input: RetrievalInput) => Promise<RetrievalResponse>;
   onKbCreated: (kbId: string) => Promise<void>;

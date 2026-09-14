@@ -42,6 +42,11 @@ export const configSchema = z.object({
    */
   GRAPH_SETTLE_MS: z.coerce.number().int().min(0).default(60_000),
   JOB_STALE_MS: z.coerce.number().int().positive().default(1_800_000),
+  /**
+   * bulk 批量导入：单次归档允许的最大 md 文件数。
+   * 防御性上限（解压炸弹/误传全站），超出直接 413；实体目标上限复用 MAX_ENTITIES_PER_RUN。
+   */
+  BULK_MAX_FILES: z.coerce.number().int().positive().default(500),
   JOB_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(104_857_600),
   /** 跨域来源列表（逗号分隔；空=关闭；* = 显式全放行） */
