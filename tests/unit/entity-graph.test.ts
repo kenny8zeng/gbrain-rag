@@ -375,3 +375,66 @@ describe("EntityGraphService 其余", () => {
     expect(ENTITY_TYPE).toBe("concept");
   });
 });
+
+describe("settleGraph 去抖（批量导入下 CLI 容量保护）", () => {
+  const cfgSettle = loadConfig({
+    ADMIN_TOKEN: "test-token-0123456789",
+    DATABASE_URL: "postgres://stub@127.0.0.1:5/stub",
+    DOCLING_URL: "",
+    GRAPH_SETTLE_MS: "60000",
+  } as Record<string, string>);
+
+  function countingService() {
+    const calls: string[] = [];
+    const exec: CliExec = async (inv) => {
+      calls.push(inv.args[0]!);
+      if (inv.args.includes("--json")) {
+        return { stdout: JSON.stringify({ links_created: 0, orphans: [] }), stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+    return { svc: new EntityGraphService(cfgSettle, { exec }), calls };
+  }
+
+  test("同库第二次调用在窗口内跳过（不跑 extract/orphans）", async () => {
+    const { svc, calls } = countingService();
+    const a = await svc.settleGraph("kb-debounce-1");
+    expect(a.skipped).toBe(false);
+    const before = calls.length;
+    const b = await svc.settleGraph("kb-debounce-1");
+    expect(b.skipped).toBe(true);
+    expect(calls.length).toBe(before); // 未产生任何 CLI 调用
+  });
+
+  test("不同库各自独立（互不抑制）", async () => {
+    const { svc } = countingService();
+    expect((await svc.settleGraph("kb-debounce-2")).skipped).toBe(false);
+    expect((await svc.settleGraph("kb-debounce-3")).skipped).toBe(false);
+  });
+
+  test("窗口为 0 时不去抖（每次都跑）", async () => {
+    const cfg0 = loadConfig({
+      ADMIN_TOKEN: "test-token-0123456789",
+      DATABASE_URL: "postgres://stub@127.0.0.1:5/stub",
+      DOCLING_URL: "",
+      GRAPH_SETTLE_MS: "0",
+    } as Record<string, string>);
+    const exec: CliExec = async (inv) => ({
+      stdout: inv.args.includes("--json") ? JSON.stringify({ links_created: 0, orphans: [] }) : "",
+      stderr: "",
+      exitCode: 0,
+    });
+    const svc = new EntityGraphService(cfg0, { exec });
+    expect((await svc.settleGraph("kb-debounce-4")).skipped).toBe(false);
+    expect((await svc.settleGraph("kb-debounce-4")).skipped).toBe(false);
+  });
+
+  test("删除路径的回收不去抖（用户显式操作应即时生效）", async () => {
+    const { svc, calls } = countingService();
+    await svc.settleGraph("kb-debounce-5"); // 占住去抖窗口
+    calls.length = 0;
+    await svc.reclaimAfterDocDelete("kb-debounce-5");
+    expect(calls).toContain("extract");
+    expect(calls).toContain("orphans");
+  });
+});

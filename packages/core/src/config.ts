@@ -1,6 +1,12 @@
 import { z } from "zod";
 import path from "node:path";
 
+/**
+ * CLI 闸门默认值（单一来源）：config schema 与 gbrain-cli 的防御性归一化共用，
+ * 避免"局部构造的 Config 缺键 → 闸门限流判为 0 → 全部调用 busy"这类灾难性形态。
+ */
+export const GBRAIN_CLI_DEFAULTS = { concurrency: 3, queueWaitMs: 60_000 } as const;
+
 export const configSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   ADMIN_TOKEN: z.string().min(16, "ADMIN_TOKEN must be at least 16 characters"),
@@ -21,6 +27,20 @@ export const configSchema = z.object({
   MCP_DEFAULT_CONCURRENCY: z.coerce.number().int().positive().default(4),
   JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
   JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000), // docling 调用另受 110s 下限约束
+  /**
+   * 全局 gbrain CLI 并发上限（唯一收敛点，见 gbrain-cli.ts 闸门）。
+   * 每个调用是一个 ~1s 启动 CPU + 常驻内存的独立进程，put 期间还挂着外部 embed
+   * 请求；无上限并发在受限节点上会互相拖垮（生产实测 143 超时）。
+   * 建议 ≥ `WORKER_CONCURRENCY + 1`——worker 占满时仍留一个槽给 HTTP 读请求。
+   */
+  GBRAIN_CLI_CONCURRENCY: z.coerce.number().int().min(1).default(GBRAIN_CLI_DEFAULTS.concurrency),
+  /** 排队等待上限：超过即抛 CliBusyError（调用方按可重试处理，HTTP 面 → 503） */
+  GBRAIN_CLI_QUEUE_WAIT_MS: z.coerce.number().int().positive().default(GBRAIN_CLI_DEFAULTS.queueWaitMs),
+  /**
+   * 建图收尾（建边兜底 + 孤儿回收）的最小间隔。两者都是**全库扫描**（O(语料)），
+   * 批量导入时逐文档跑会与 put 争抢 CLI 容量；间隔内的变更由下一个任务补齐。
+   */
+  GRAPH_SETTLE_MS: z.coerce.number().int().min(0).default(60_000),
   JOB_STALE_MS: z.coerce.number().int().positive().default(1_800_000),
   JOB_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(104_857_600),

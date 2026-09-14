@@ -75,17 +75,28 @@ export function invalidateSourceCache(): void {
 
 async function snapshot(cfg: Config): Promise<{ all: SourceRow[]; archived: Set<string> }> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache;
-  const [list, archived] = await Promise.all([
-    runGbrainJson<SourcesListResponse>(cfg, { args: ["sources", "list"], timeoutMs: 30_000 }),
-    // CLI sources archived 输出的键为 "archived"（非 "sources"）
-    runGbrainJson<{ archived?: { id: string }[] }>(cfg, { args: ["sources", "archived"], timeoutMs: 30_000 }),
-  ]);
-  cache = {
-    at: Date.now(),
-    all: list.sources ?? [],
-    archived: new Set((archived.archived ?? []).map((s) => s.id)),
-  };
-  return cache;
+  try {
+    const [list, archived] = await Promise.all([
+      runGbrainJson<SourcesListResponse>(cfg, { args: ["sources", "list"], timeoutMs: 30_000 }),
+      // CLI sources archived 输出的键为 "archived"（非 "sources"）
+      runGbrainJson<{ archived?: { id: string }[] }>(cfg, { args: ["sources", "archived"], timeoutMs: 30_000 }),
+    ]);
+    cache = {
+      at: Date.now(),
+      all: list.sources ?? [],
+      archived: new Set((archived.archived ?? []).map((s) => s.id)),
+    };
+    return cache;
+  } catch (e) {
+    // CLI 容量饱和/超时时**放行陈旧快照**：库的存在性几乎不变，让导入/检索继续，
+    // 而不是把一次纯读探测的失败放大成导入接口 500（生产实测：批量导入下
+    // `sources list` 也排队超时 → ensureKbActive 抛错 → 提交接口 unhandled 500）。
+    if (cache) {
+      console.log(JSON.stringify({ evt: "source_snapshot_stale", age_ms: Date.now() - cache.at, error: (e as Error).message.slice(0, 160) }));
+      return cache;
+    }
+    throw e;
+  }
 }
 
 async function listAllSources(cfg: Config): Promise<SourceRow[]> {

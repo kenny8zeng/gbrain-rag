@@ -144,7 +144,10 @@ POST /v1/kb/{id}/retrieval
 | PARSER_UNAVAILABLE | 422 | 当前解析模式不支持该通道（如 anydoc 模式的 URL） |
 | DREAM_RUNNING | 409 | 梦境周期已在运行（再次触发被拒） |
 | RATE_LIMITED | 429 | 并发超限 |
+| UPSTREAM_BUSY | 503 | 知识引擎容量饱和（CLI 并发闸门排满，可重试） |
 | INTERNAL | 500 | 服务端错误（日志含详情） |
+
+**引擎容量与并发**：所有 `gbrain` CLI 调用经**全局并发闸门**（默认 3，`GBRAIN_CLI_CONCURRENCY`）——每个调用是独立进程（~1s 启动 CPU + 常驻内存），且 `put` 期间挂着外部嵌入请求。排队超过 `GBRAIN_CLI_QUEUE_WAIT_MS`（默认 60s）即返回 503 而非无限等待。大批量导入请**顺序提交**并轮询任务；建图收尾（建边兜底 + 孤儿回收的全库扫描）按 `GRAPH_SETTLE_MS`（默认 60s）去抖。
 
 **删除语义**：`DELETE /v1/kb/:id` → 200 `{"status":"archived"}`（**归档非物理删除**，72h 保留可恢复）；物理清除走 `POST /v1/kb/:id/purge`（有引用凭证时 `?force=true` 联动吊销）。凭证吊销后 401（`invalid api key`），与"凭证不存在"同响应（不泄露存在性）。
 

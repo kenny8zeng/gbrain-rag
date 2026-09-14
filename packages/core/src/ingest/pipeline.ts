@@ -173,8 +173,7 @@ export async function processIngestJob(
   // 未生效 ⇒ 整体放弃回收。
   if (wikilinks.targets.length > 0) {
     try {
-      await graph.runLinkExtraction(job.kbId);
-      const rec = await graph.reconcileEntityStubs(job.kbId, { referencedByCurrentDoc: referenced });
+      const rec = await graph.settleGraph(job.kbId, { referencedByCurrentDoc: referenced });
       if (rec.aborted) {
         console.log(JSON.stringify({ evt: "entity_reclaim_aborted", kb: job.kbId, reason: rec.aborted, candidates: rec.candidates }));
       }

@@ -36,6 +36,9 @@ export const MAX_ENTITIES_PER_RUN = 2000;
 /** 单次回收最多校验/删除的实体页（每页一次 get 校验标记） */
 export const MAX_RECLAIM_PER_RUN = 50;
 
+/** 建图收尾的按库去抖时间戳（模块级：跨 EntityGraphService 实例共享） */
+const lastSettleAt = new Map<string, number>();
+
 export type CliExec = (inv: CliInvocation) => Promise<CliResult>;
 
 export interface EntityTarget {
@@ -315,8 +318,31 @@ export class EntityGraphService {
   }
 
   /**
+   * 建图收尾：显式提取（幂等兜底）+ 孤儿回收，**按 kb 去抖**。
+   *
+   * 两者都是全库扫描（O(语料)）；批量导入时逐文档跑会把 CLI 容量吃光。去抖安全，
+   * 因为 `put` 的 auto_link 已在写入时建好**当篇文档**的边——跳过提取不丢本文档的
+   * 关系，只是把"兜底 + 回收"推迟到间隔后（下一个任务或梦境周期会补）。
+   */
+  async settleGraph(
+    kbId: string,
+    opts: { referencedByCurrentDoc?: ReadonlySet<string> } = {},
+  ): Promise<{ skipped: boolean } & ReconcileResult> {
+    const now = Date.now();
+    const last = lastSettleAt.get(kbId) ?? 0;
+    if (this.cfg.GRAPH_SETTLE_MS > 0 && now - last < this.cfg.GRAPH_SETTLE_MS) {
+      return { skipped: true, candidates: 0, reclaimed: [], aborted: null };
+    }
+    lastSettleAt.set(kbId, now);
+    await this.runLinkExtraction(kbId);
+    const rec = await this.reconcileEntityStubs(kbId, opts);
+    return { skipped: false, ...rec };
+  }
+
+  /**
    * 文档删除后的回收：先重跑提取（使图与"删除后"的事实一致），再回收孤儿。
    * 提取失败即抛出——否则"提取坏了"会让全库卡片看起来都无引用而被误删。
+   * **不去抖**：删除是低频且用户显式操作，应当即时生效。
    */
   async reclaimAfterDocDelete(kbId: string): Promise<ReconcileResult> {
     await this.runLinkExtraction(kbId);

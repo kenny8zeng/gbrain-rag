@@ -5,7 +5,7 @@ import type { Env } from "../../middleware/auth";
 import { libHandler } from "../handler";
 import { canReadKb, canWriteKb } from "../../middleware/auth";
 import { ensureKbActive, KbNotFoundError, KbArchivedError } from "@core/kb";
-import { CliError, runGbrain, runGbrainJson } from "@core/gbrain-cli";
+import { CliBusyError, CliError, runGbrain, runGbrainJson } from "@core/gbrain-cli";
 import { DOC_TYPE, isDocSlug, EntityGraphService } from "@core/entity-graph";
 import { resolveParserFor } from "@core/ingest/resolver";
 import { ParserUnavailableError } from "@core/ingest/parser";
@@ -29,6 +29,14 @@ function kbState(c: Context<Env>, e: unknown) {
   }
   if (e instanceof KbArchivedError) {
     return c.json({ error: { code: "ARCHIVED", message: e.message } }, 410);
+  }
+  // 引擎容量饱和 / CLI 排队超时：可重试，不应放大成 500（生产实测：批量导入下
+  // 连 `sources list` 都排队超时，把提交接口打成 unhandled 500）
+  if (e instanceof CliBusyError || e instanceof CliError) {
+    return c.json(
+      { error: { code: "UPSTREAM_BUSY", message: "knowledge engine is busy, please retry" } },
+      503,
+    );
   }
   throw e;
 }

@@ -144,6 +144,7 @@ RERANK_API_KEY=sk-...
   - 引擎开关 `link_resolution.global_basename=true` 由**建库时自动设置**（实体页位于子目录，关时双链解析为 0 边）
   - 实体页是**派生数据**：不落磁盘、不进备份，可由文档双链 100% 重建（重新导入文档即可）；因此**备份只需覆盖 postgres + DATA_DIR**
   - 删除文档后，其独占引用的实体页会自动回收（共享节点保留；用户自建页永不回收）
+- **并发与容量（重要）**：所有引擎 CLI 调用经全局闸门限流（`GBRAIN_CLI_CONCURRENCY` 默认 3，建议 ≥ `WORKER_CONCURRENCY` + 1）；排队超 `GBRAIN_CLI_QUEUE_WAIT_MS`（默认 60s）即返回 503 `UPSTREAM_BUSY`。每个 CLI 调用是独立进程（~1s 启动 CPU + 常驻内存），`put` 期间还挂着外部嵌入请求——**容量受限的节点务必保守配置**。建图收尾的全库扫描按 `GRAPH_SETTLE_MS`（默认 60s）去抖
 - 备份建议：
   - 定期 `pg_dump`（或 gbrain `gbrain export` 导出 Markdown 全量）
   - 卷快照（DATA_DIR 含 git 历史，可经 `git push` 异地备份）
