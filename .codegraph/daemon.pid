@@ -1,6 +1,6 @@
 {
-  "pid": 2212346,
+  "pid": 2352344,
   "version": "1.6.0",
   "socketPath": "/root/workspace/gbrain-services/gbrain-rag/.codegraph/daemon.sock",
-  "startedAt": 1789393503065
+  "startedAt": 1789399459401
 }

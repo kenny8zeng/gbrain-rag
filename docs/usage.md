@@ -30,9 +30,48 @@
 | 跨库隔离 | 实体页位于各库自己的 `entities/` 分区，同名概念在不同库互不串边 |
 | 派生数据 | 实体页由文档双链推导（不落磁盘、不进备份）；丢失可经重新导入文档 100% 重建 |
 
-**图查询**：
+**组合检索（推荐形态）**：向量负责"按语义找文档"，图谱负责"展开相关概念与关联文档"，两者互补。
 
-租户面（受读授权管控，确定性检索链用）：
+```bash
+# ① 向量/混合检索：拿到语义最相近的文档（入口）
+curl -X POST "$BASE/v1/kb/$KB/retrieval" -H "X-API-Key: $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"brake abnormal noise troubleshooting","mode":"hybrid","top_k":5}'
+# → {"mode":"hybrid","degraded":[],"results":[{"slug","title","snippet","score","source_id"}]}
+
+# ② 图谱遍历：从概念出发拿"相关概念 + 引用它的文档"
+curl "$BASE/v1/kb/$KB/graph/traverse?slug=$KB/entities/brake&depth=2&direction=both" \
+  -H "X-API-Key: $KEY"
+# → {"paths":[{"from_slug","to_slug","link_type","context","depth"}]}
+#   context = 该关系在原文中的出处片段
+
+# ③ 用图谱发现的概念再检索（补向量漏掉的侧面）
+curl -X POST "$BASE/v1/kb/$KB/retrieval" -H "X-API-Key: $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"brake fluid replacement bleeding","mode":"hybrid","top_k":3}'
+
+# ④ 取全文（graph/retrieval 返回的都是 slug，配此端点拿内容）
+curl "$BASE/v1/kb/$KB/page?slug=$KB/docs/<name>" -H "X-API-Key: $KEY"
+# → {"slug","content"}
+```
+
+**实测对照**（同一问题「刹车异响排查」）：
+
+| 通道 | 命中 |
+|---|---|
+| 向量（top 5） | 3 篇故障排查文档 |
+| 图谱（`brake` 二跳） | 3 篇，其中 **2 篇向量漏掉**（同为 ICT 刹车主题，但问的是"用哪种刹车/是否需要组装"——语义不同、概念相同） |
+| 两者并集 | 5 篇，覆盖"怎么排查"与"是什么"两侧面 |
+
+**要点**：
+- `graph/traverse` 返回的 **`context` 字段**直接给出关系出处（原文片段），可作答案引用
+- **每个端点限定单个 `{id}`**（响应 `source_id` 即该库）——多库需分别调用后自行合并
+- 概念 slug 规范：`[[Soleil01 SE]]` → `<kb>/entities/soleil01-se`（小写、空格→`-`、重音折叠；CJK 原样）
+- `degraded` 非空表示部分通道降级（如向量层不可用，仅关键词生效）
+
+**图查询端点**
+
+租户面（受读授权管控）：
 
 ```bash
 # 多跳关系遍历（起点 slug 须属本 key 可读的库；返回路径已收敛到可读库内）
