@@ -35,6 +35,7 @@ describe("collectGraphDocs 图谱增强检索（纯逻辑）", () => {
         via_concepts: ["brake", "brake-fluid"],
         seed_slugs: [seed],
         shared_concepts: 2,
+        weight: 2, // 两概念各只连到 1 篇相邻文档 → 各贡献 1
       },
     ]);
   });
@@ -118,5 +119,49 @@ describe("collectGraphDocs 图谱增强检索（纯逻辑）", () => {
     expect(collectGraphDocs(KB, [], new Map(), { depth: 2, maxResults: 10 })).toEqual([]);
     const bySeed = new Map([[seed, paths({}, { from_slug: 123 }, { from_slug: seed, to_slug: null, depth: 2 })]]);
     expect(collectGraphDocs(KB, [seed], bySeed, { depth: 2, maxResults: 10 })).toEqual([]);
+  });
+});
+
+describe("特异性加权（防高频概念主导排序）", () => {
+  test("无处不在的概念贡献趋近 0，专有概念贡献接近 1", () => {
+    // seed 涉及 brake(专有) 与 brand(泛化)
+    // 3 篇相邻文档都提到 brand，只有 1 篇提到 brake
+    const a = `${KB}/docs/a`;
+    const b = `${KB}/docs/b`;
+    const c = `${KB}/docs/c`;
+    const eBrand = `${KB}/entities/brand`;
+    const bySeed = new Map([
+      [
+        seed,
+        paths(
+          edge(seed, eBrake, 1),
+          edge(seed, eBrand, 1),
+          edge(a, eBrake, 2),
+          edge(a, eBrand, 2),
+          edge(b, eBrand, 2),
+          edge(c, eBrand, 2),
+        ),
+      ],
+    ]);
+    const hits = collectGraphDocs(KB, [seed], bySeed, { depth: 2, maxResults: 10 });
+    const bySlug = new Map(hits.map((h) => [h.slug.split("/").pop()!, h]));
+    // a：brake fanout=1 → 1；brand fanout=3 → 1/3  ⇒ 1.333
+    expect(bySlug.get("a")!.weight).toBe(1.333);
+    // b/c：仅 brand ⇒ 0.333，排在 a 之后
+    expect(bySlug.get("b")!.weight).toBe(0.333);
+    expect(hits.map((h) => h.slug.split("/").pop())).toEqual(["a", "b", "c"]);
+    // 原始计数仍是事实（a 有 2 个概念，b/c 只 1 个）
+    expect(bySlug.get("a")!.shared_concepts).toBe(2);
+    expect(bySlug.get("b")!.shared_concepts).toBe(1);
+  });
+
+  test("权重相同时按 slug 稳定排序", () => {
+    const x = `${KB}/docs/x`;
+    const y = `${KB}/docs/y`;
+    const bySeed = new Map([
+      [seed, paths(edge(seed, eBrake, 1), edge(y, eBrake, 2), edge(x, eBrake, 2))],
+    ]);
+    const hits = collectGraphDocs(KB, [seed], bySeed, { depth: 2, maxResults: 10 });
+    expect(hits.map((h) => h.slug)).toEqual([x, y]);
   });
 });

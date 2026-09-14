@@ -120,6 +120,8 @@ export const GraphHit = z.object({
   via_concepts: z.array(z.string()),
   seed_slugs: z.array(z.string()),
   shared_concepts: z.number().int(),
+  /** 特异性加权分（排序依据） */
+  weight: z.number(),
 });
 
 export const RetrievalResponse = z.object({

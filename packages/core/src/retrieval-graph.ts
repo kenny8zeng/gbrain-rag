@@ -36,8 +36,15 @@ export interface GraphHit {
   via_concepts: string[];
   /** 参与发现它的种子文档 slug */
   seed_slugs: string[];
-  /** 共现概念数（排序依据） */
+  /** 共现概念数（原始计数） */
   shared_concepts: number;
+  /**
+   * 特异性加权分：`Σ 1/fanout(概念)`，`fanout` = 该概念在本轮连到的相邻文档数。
+   * 品牌名之类**无处不在**的概念 fanout 大 → 贡献趋近 0；真正把这篇文档与种子
+   * 绑在一起的概念 fanout 小 → 贡献接近 1。排序依据（而非原始计数，后者会被
+   * 高频概念主导）。
+   */
+  weight: number;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -99,13 +106,36 @@ export function collectGraphDocs(
     }
   }
 
+  return finishHits(found, opts.maxResults);
+}
+
+/**
+ * 收尾：算概念 fanout（该概念在本轮连到多少篇相邻文档）→ 特异性加权 → 排序截断。
+ * 拆成独立函数便于单测。
+ */
+function finishHits(
+  found: ReadonlyMap<string, { concepts: Set<string>; seeds: Set<string> }>,
+  maxResults: number,
+): GraphHit[] {
+  if (found.size === 0) return [];
+
+  // 概念 → 连到的相邻文档数（泛化度：越大越不具区分力）
+  const fanout = new Map<string, number>();
+  for (const { concepts } of found.values()) {
+    for (const c of concepts) fanout.set(c, (fanout.get(c) ?? 0) + 1);
+  }
+
   return [...found]
-    .map(([slug, e]) => ({
-      slug,
-      via_concepts: [...e.concepts].map(conceptName).sort(),
-      seed_slugs: [...e.seeds].sort(),
-      shared_concepts: e.concepts.size,
-    }))
-    .sort((a, b) => b.shared_concepts - a.shared_concepts || a.slug.localeCompare(b.slug))
-    .slice(0, opts.maxResults);
+    .map(([slug, e]) => {
+      const weight = [...e.concepts].reduce((sum, c) => sum + 1 / (fanout.get(c) ?? 1), 0);
+      return {
+        slug,
+        via_concepts: [...e.concepts].map(conceptName).sort(),
+        seed_slugs: [...e.seeds].sort(),
+        shared_concepts: e.concepts.size,
+        weight: Math.round(weight * 1000) / 1000,
+      };
+    })
+    .sort((a, b) => b.weight - a.weight || a.slug.localeCompare(b.slug))
+    .slice(0, maxResults);
 }
