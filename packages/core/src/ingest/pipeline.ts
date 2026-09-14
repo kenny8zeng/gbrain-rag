@@ -1,4 +1,5 @@
 import { mkdirSync, existsSync, renameSync, writeFileSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type { Config } from "../config";
 import { docsDir, incomingDir } from "../config";
@@ -26,16 +27,49 @@ export interface IngestOutcome {
   graphLog?: string;
 }
 
-/** 小写、非字母数字折叠为 -、去首尾 -、≤64 字符 */
+/**
+ * slug 尾段的 UTF-8 字节预算。文件系统单个文件名上限 255 字节，且 slug 会被
+ * write-through 落成 `${slug}.md`——故按**字节**而非字符控制（CJK 每字符 3 字节，
+ * 按字符放宽会在中文名上撞 255 上限）。留出 `.md` 与目录余量。
+ */
+export const SLUG_MAX_BYTES = 200;
+const SLUG_HASH_LEN = 8;
+
+const utf8Len = (s: string): number => Buffer.byteLength(s, "utf8");
+
+/** 截断后用于消歧的短哈希：取**完整规范化名**的 sha256 前 8 hex */
+function slugDisambiguator(normalized: string): string {
+  return createHash("sha256").update(normalized).digest("hex").slice(0, SLUG_HASH_LEN);
+}
+
+/**
+ * 文件名 → slug 尾段。
+ *
+ * **超长名必须抗撞车**：直接截断会让「前缀相同、仅尾部不同」的两个文件映射到
+ * **同一个 slug** → 后者静默覆盖前者（文档丢失，实测可复现）。故超长时截断并附
+ * **完整名的短哈希**：不同长名得到不同 slug，且同名重复导入仍幂等（哈希稳定）。
+ */
 export function slugifyName(name: string): string {
   const s = name
     .toLowerCase()
     .replace(/\.[a-z0-9]{1,8}$/i, "")
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64)
-    .replace(/-+$/g, "");
-  return s.length > 0 ? s : "doc";
+    .replace(/^-+|-+$/g, "");
+  if (s.length === 0) return "doc";
+  if (utf8Len(s) <= SLUG_MAX_BYTES) return s;
+
+  // 按字符累积到字节预算内（避免截断多字节字符），再拼哈希
+  const budget = SLUG_MAX_BYTES - SLUG_HASH_LEN - 1; // 留 "-<hash>"
+  let head = "";
+  let used = 0;
+  for (const ch of s) {
+    const b = utf8Len(ch);
+    if (used + b > budget) break;
+    head += ch;
+    used += b;
+  }
+  head = head.replace(/-+$/g, "");
+  return `${head}-${slugDisambiguator(s)}`;
 }
 
 export function deriveSlug(kbId: string, baseName: string): string {

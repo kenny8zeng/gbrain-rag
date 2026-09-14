@@ -165,6 +165,24 @@ curl -d '{"url":"https://example.com/doc"}' http://.../v1/kb/$KB/documents
 curl -H 'Content-Type: text/markdown' -H 'X-Slug: notes' --data-binary @note.md ...
 ```
 
+### 页面命名（slug）
+
+文件导入时，页面 slug 由文件名（或 `title` 表单字段）派生：
+
+```
+文件名  02-Soleil01-Series-US.03-02-Battery.md
+  → slug  <kb>/docs/02-soleil01-series-us-03-02-battery
+```
+
+| 规则 | 说明 |
+|---|---|
+| 归一化 | 小写；非「字母/数字/CJK」折叠为 `-`；去首尾 `-` |
+| 长度 | 上限 **200 字节**（按 UTF-8 字节计，非字符数——CJK 每字 3 字节，这样才不会撞文件系统 255 字节上限） |
+| **超长处理** | 超出预算时**截断并附完整文件名的 8 位哈希**（如 `…-delivery-notes-a1b2c3d4`）——保证「前缀相同、仅尾部不同」的长文件名**不会撞成同一页**（否则后者会静默覆盖前者），同时同名重复导入仍幂等 |
+| 空名回退 | 归一化后为空 → `doc` |
+
+⚠️ **迁移提示**：若你的库里存在**超长文件名**导入的页面（旧版实现会硬截断到 64 字符），升级后重新导入会生成**完整名的新 slug**，旧页面会成为残留。核对方法：对每个文档用其 `title` 重新推导 slug，与实际 slug 不一致的即为旧页。
+
 ### 检索
 
 ```json

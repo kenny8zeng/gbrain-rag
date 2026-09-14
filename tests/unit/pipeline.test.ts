@@ -13,8 +13,9 @@ describe("slugifyName", () => {
   test("空串回退 doc", () => {
     expect(slugifyName("///")).toBe("doc");
   });
-  test("截断 64 字符", () => {
-    expect(slugifyName("x".repeat(100)).length).toBeLessThanOrEqual(64);
+  test("预算内长名原样保留（旧的 64 字符硬截断已废弃）", () => {
+    const name = "x".repeat(100);
+    expect(slugifyName(name)).toBe(name);
   });
 });
 
@@ -62,5 +63,68 @@ describe("buildMarkdown", () => {
     const out = buildMarkdown("---\ntitle: x\ntype: entity\n---\nbody", { title: "T", kb: "kb-1", convertedAt: "now" });
     expect(out).toContain("type: note");
     expect(out).not.toContain("type: entity");
+  });
+});
+
+describe("slug 生成：超长名抗撞车（截断致静默覆盖的修复）", () => {
+  // 需超过 SLUG_MAX_BYTES(200) 才会触发截断
+  const long = (tail: string) =>
+    `02-per-series-troubleshooting-and-error-codes-03-01-fault-troubleshooting-2-fault-code-` +
+    `a-really-long-descriptive-tail-because-this-corpus-uses-verbose-names-${tail}`;
+
+  test("短名不变（向后兼容，含中文）", () => {
+    expect(slugifyName("Battery Pack")).toBe("battery-pack");
+    expect(slugifyName("电池说明")).toBe("电池说明");
+    expect(slugifyName("a.md")).toBe("a");
+  });
+
+  test("超长名截断后附哈希：不同的长名不再撞车", () => {
+    const a = slugifyName(`${long("e01")}.md`);
+    const b = slugifyName(`${long("e02")}.md`);
+    expect(a).not.toBe(b); // 修复前两者前缀相同 → 截断后相同
+    expect(Buffer.byteLength(a, "utf8")).toBeLessThanOrEqual(200);
+    expect(Buffer.byteLength(b, "utf8")).toBeLessThanOrEqual(200);
+  });
+
+  test("同名重复导入幂等（哈希稳定）", () => {
+    const n = `${long("e01")}.md`;
+    expect(slugifyName(n)).toBe(slugifyName(n));
+    // 大小写/标点差异归一后仍稳定
+    expect(slugifyName(n.toUpperCase())).toBe(slugifyName(n));
+  });
+
+  test("哈希基于完整名：仅尾部差异必须改变哈希", () => {
+    const base = long("");
+    const h1 = slugifyName(`${base}alpha`).slice(-8);
+    const h2 = slugifyName(`${base}beta`).slice(-8);
+    expect(h1).not.toBe(h2);
+  });
+
+  test("边界：字节预算内原样；超出才截断加哈希", () => {
+    const inBudget = "a".repeat(200);
+    expect(slugifyName(inBudget)).toBe(inBudget); // 200 ASCII 字节 = 恰好预算内
+    const over = slugifyName("a".repeat(201));
+    expect(Buffer.byteLength(over, "utf8")).toBeLessThanOrEqual(200);
+    expect(over).not.toBe("a".repeat(200));
+    expect(over.startsWith("a".repeat(191))).toBe(true); // head = 200-8-1
+  });
+
+  test("CJK 按字节截断：不越 255 字节文件名上限（避免 ENAMETOOLONG）", () => {
+    const longCjk = "电池".repeat(100); // 200 字符 = 600 字节
+    const s = slugifyName(`${longCjk}.md`);
+    expect(Buffer.byteLength(s, "utf8")).toBeLessThanOrEqual(200);
+    expect(Buffer.byteLength(`${s}.md`, "utf8")).toBeLessThan(255);
+    expect(s).not.toContain("\uFFFD"); // 未截断多字节字符
+  });
+
+  test("截断处的连字符被剥离（不产生双连字符或尾连字符）", () => {
+    const s = slugifyName(`aaaa-bbbb-cccc-dddd-eeee-ffff-gggg-hhhh-iiii-jjjj-kkkk-llll-mmmm-nnnn-oooo-pppp-qqqq-rrrr-ssss-tttt-uuuu-vvvv-wwww-xxxx-yyyy-zzzz`);
+    expect(s).not.toContain("--");
+    expect(s.endsWith("-")).toBe(false);
+  });
+
+  test("空名/纯标点回退 doc", () => {
+    expect(slugifyName("")).toBe("doc");
+    expect(slugifyName("!!!")).toBe("doc");
   });
 });
