@@ -145,6 +145,7 @@ RERANK_API_KEY=sk-...
   - 实体页是**派生数据**：不落磁盘、不进备份，可由文档双链 100% 重建（重新导入文档即可）；因此**备份只需覆盖 postgres + DATA_DIR**
   - 删除文档后，其独占引用的实体页会自动回收（共享节点保留；用户自建页永不回收）
 - **并发与容量（重要）**：所有引擎 CLI 调用经全局闸门限流（`GBRAIN_CLI_CONCURRENCY` 默认 3，建议 ≥ `WORKER_CONCURRENCY` + 1）；排队超 `GBRAIN_CLI_QUEUE_WAIT_MS`（默认 60s）即返回 503 `UPSTREAM_BUSY`。每个 CLI 调用是独立进程（~1s 启动 CPU + 常驻内存），`put` 期间还挂着外部嵌入请求——**容量受限的节点务必保守配置**。建图收尾的全库扫描按 `GRAPH_SETTLE_MS`（默认 60s）去抖
+- **批量导入吞吐（实测，4 核节点）**：**每篇文档需 3 次引擎 CLI 进程**——`list`（双链目标存在性检查）+ `get`（`pageExists`）+ `put`（含 embed），各约 0.8~1.0s（与文档大小、双链条数基本无关）；另有每 60s 一次的建图收尾（`extract links` + `orphans` + `list`，合计约 3.7s）。实测 `WORKER_CONCURRENCY=2` 下**约 3.8s/篇**（40 篇 152s；185 篇含实体建页约 12~15min）。该节点 CLI 的并发吞吐上限约 **1.7 次/秒**，因此**提高 `WORKER_CONCURRENCY` 的收益以 CLI 闸门为上限**，且须为读路径（每次读也起 1 次 CLI）留出槽位——`GBRAIN_CLI_CONCURRENCY` ≤ `WORKER_CONCURRENCY` 时导入期间读接口会排队变慢
 - 备份建议：
   - 定期 `pg_dump`（或 gbrain `gbrain export` 导出 Markdown 全量）
   - 卷快照（DATA_DIR 含 git 历史，可经 `git push` 异地备份）
