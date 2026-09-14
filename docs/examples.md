@@ -108,7 +108,29 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "$AUTH" $BASE/v1/kb/$KB_B   # 410
 curl -s -X POST -H "$AUTH" "$BASE/v1/kb/$KB_B/purge?force=true" | jq '{status, revoked_keys}'
 ```
 
-## 7. MCP 接入（Agent）
+## 7. 知识图谱检索
+
+```bash
+# ① 图谱增强检索（一次调用拿两条通道；不传 graph 就是纯向量，行为与历史一致）
+curl -s -X POST "$BASE/v1/kb/$KB/retrieval" -H "X-API-Key: $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"brake abnormal noise","top_k":3,
+       "graph":{"depth":2,"seed_k":3,"max_results":10}}' | jq .
+# results[]      → 向量排名（slug/title/snippet/score）
+# graph_results[] → 图谱发现的相邻文档（slug/via_concepts/seed_slugs/shared_concepts/weight）
+
+# ② 直接走图：从概念出发的多跳遍历（省略 direction 默认 both）
+curl -s "$BASE/v1/kb/$KB/graph/traverse?slug=$KB/entities/brake&depth=2" \
+  -H "X-API-Key: $KEY" | jq '.paths[] | {from_slug, to_slug, link_type, context}'
+# context = 该关系在原文中的出处片段，可作答案引用
+
+# ③ 取全文（两条通道返回的都是 slug）
+curl -s "$BASE/v1/kb/$KB/page?slug=$KB/docs/<name>" -H "X-API-Key: $KEY" | jq -r .content
+```
+
+**读法**：`graph_results` 的排序是启发式（`weight` 压制品牌名之类无处不在的概念），**判断相关性优先看 `via_concepts`**——它直接说明这篇文档因为哪个概念被连上。图谱命中是「推导出的关联」而非排序结果，故独立数组、不给分数。
+
+## 8. MCP 接入（Agent）
 
 ```bash
 # 方式一：MCP Inspector（浏览器交互）
@@ -128,7 +150,22 @@ curl -s -X POST http://localhost:3000/mcp \
 
 Agent 体验：在其写分区内自主建/改/删页面，检索自动覆盖授权读分区——内容管理 + 检索的基础能力闭环。
 
-## 8. 运维示例
+**图谱相关 MCP 工具**（Agent 可直接调用）：
+
+```
+traverse_graph  {"slug":"<kb>/entities/brake","depth":2,"direction":"both"}
+get_links       {"slug":"<kb>/docs/<name>"}     # 出边
+get_backlinks   {"slug":"<kb>/entities/brake"}  # 入边
+list_link_sources {}
+```
+
+⚠️ 两点差异：
+- **文档面读工具（`search`/`query`/`list_pages`）已注入文档类型过滤**——实体页不会出现在 Agent 的文档视图里（与 REST 面语义一致）；调用方显式传 `types` 时不覆盖
+- **图工具不受该过滤影响**（这正是查图谱的通道）
+
+⚠️ `traverse_graph` 的**返回形状随 `direction` 变化**：省略 → 节点树（`{slug,links[]}`）；传 `in`/`out`/`both` → 边列表（`{from_slug,to_slug,link_type,context,depth}`）。要边列表就必须传 `direction`。
+
+## 9. 运维示例
 
 ```bash
 # 引擎状态（结构化）
