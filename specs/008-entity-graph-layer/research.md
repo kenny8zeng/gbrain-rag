@@ -289,7 +289,35 @@ DB slug: kb-86e4c440/docs/doc-two
 
 → 若将来需要实体页纳入备份，可改走 `put`（落盘），代价是每页一次嵌入调用。
 
-## R18 既有缺陷与本方案的交集
+## R18 引擎 CLI 的并发容量（生产事故根因）
+
+**症状（生产）**：并发批量导入时提交接口 `POST /documents` 出现 unhandled 500，日志为
+`gbrain sources exited with 143`——**143 = SIGTERM**，即调用的 `AbortSignal.timeout` 触发。
+
+**根因链**（无一处是"命令本身坏"）：
+1. 每次 `runGbrain` 都是一个**独立进程**：单文件 bun 二进制 ~174MB，启动约 **1s CPU**（生产实测）。
+2. `put` 的进程存活期**包含外部嵌入请求**——引擎源码明确 "Embed BEFORE the transaction (external API call)"，即事务外、但进程内。大文档可达数十秒。
+3. 服务侧**没有任何并发上限**：worker 默认并发 2，每个任务还会串起 list/import/put/extract/orphans/get 多个 CLI；HTTP 路径的 `snapshot()` 另起 `sources list` + `sources archived`。
+4. 于是批量导入时进程数爆炸 → CPU 饥饿 → 连纯读的 `sources list` 都跑不完 30s 预算 → 被 SIGTERM。
+5. 该异常从 `ensureKbActive` 抛出且**未被捕获** → `unhandled_error` → 500。
+
+**本方案对负载的放大**（须一并记账）：008 建图层每篇文档追加 `extract links` + `orphans` 两次**全库扫描**（400 页量级实测各约 1–1.5s），批量导入时与 `put` 争抢同一批 CLI 容量。
+
+**修复**：
+| 层 | 措施 |
+|---|---|
+| `gbrain-cli.ts` | 全局并发闸门（唯一 spawn 入口）：`GBRAIN_CLI_CONCURRENCY`（默认 3，建议 ≥ worker+1 以给读请求留槽）+ 有界排队 `GBRAIN_CLI_QUEUE_WAIT_MS`（默认 60s，超时抛 `CliBusyError`）；**执行超时不含排队**，避免长队列吃掉执行预算 |
+| `kb.ts` | `snapshot()` **fail-open**：探测失败时用陈旧缓存放行——库存在性几乎不变，把一次只读探测失败放大成导入失败是错误取舍 |
+| `entity-graph.ts` | 建图收尾（建边兜底 + 孤儿回收）按 `GRAPH_SETTLE_MS`（默认 60s）**去抖**；跳过安全，因为 `put` 的 auto_link 已写好本文档的边。删除路径的回收**不去抖**（显式、低频、应即时） |
+| `tenant.ts` | `CliError`/`CliBusyError` → **503 `UPSTREAM_BUSY`**（可重试），不再升级成 unhandled 500 |
+
+**评估过但**不做**的两件事**：
+- **全 API 请求入队**：导入路径本就已入队（`rag_jobs` + `SKIP LOCKED`）；读路径轻量且现在有界。把读也改成异步 202 是契约大改、只增延迟。
+- **CLI 独占锁**：`put` 的进程期主要是**网络 IO 的嵌入调用**，串行化会让批量导入从分钟级退化到小时级。有界并发 + 去抖已覆盖观测到的故障，无正确性理由。
+
+**生产验证**（26 并发提交，同一库）：全部 202、26/26 任务 `done`；日志 `exited with 143` / `unhandled_error` / 闸门降级 **均为 0**；最终 13 文档 / 98 实体页（幂等）。
+
+## R19 既有缺陷与本方案的交集
 
 - **P10**：`/v1/kb/:id/retrieval` 请求 `top_k=2` 实测返回 5 条——`retrieval-serve.ts` 只把 `topK` 传给 `limit`，未对最终结果截断（多查询/双臂合并后超量）。→ 纳入 FR-011。
 - **N4**：向量层为空时 hybrid 不报 `degraded`（`degraded: []`），但关键词臂仍返回——`sources/status` 的 `embed_coverage_pct` 可作外部判据。→ 可选增强，不在本期硬指标。
