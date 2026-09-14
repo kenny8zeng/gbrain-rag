@@ -110,8 +110,11 @@ async function main(): Promise<void> {
     dream,
     doclingOk: doclingProbe(cfg.DOCLING_URL),
     submitJob,
+    // 带 graph 参数时走图谱增强路径（向量 + 图谱一次调用）；否则与原行为一致
     retrieve: (kbId, input) =>
-      retrieveWithFallback(cfg, (k, i) => internalRetrieval.retrieve(k, i), kbId, input),
+      input.graph
+        ? internalRetrieval.retrieveWithGraph(kbId, input)
+        : retrieveWithFallback(cfg, (k, i) => internalRetrieval.retrieve(k, i), kbId, input),
     onKbCreated: (kbId) => internalRetrieval.onKbCreated(kbId),
     onKbPurged: () => internalRetrieval.onKbPurged(),
     graphQuery: (tool, args) => internalRetrieval.callTool(tool, args),

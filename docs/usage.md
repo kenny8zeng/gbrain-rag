@@ -32,25 +32,43 @@
 
 **组合检索（推荐形态）**：向量负责"按语义找文档"，图谱负责"展开相关概念与关联文档"，两者互补。
 
+**一次调用即可拿到两条通道**（`graph` 参数缺省时 = 纯向量/关键词，行为与历史完全一致）：
+
 ```bash
-# ① 向量/混合检索：拿到语义最相近的文档（入口）
+# 向量 + 图谱（同一次请求）
 curl -X POST "$BASE/v1/kb/$KB/retrieval" -H "X-API-Key: $KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"query":"brake abnormal noise troubleshooting","mode":"hybrid","top_k":5}'
-# → {"mode":"hybrid","degraded":[],"results":[{"slug","title","snippet","score","source_id"}]}
+  -d '{"query":"brake abnormal noise","mode":"hybrid","top_k":1,
+       "graph":{"depth":2,"seed_k":3,"max_results":10}}'
+# → {"results":[{slug,title,snippet,score,source_id}],          ← 向量排名（保持不变）
+#    "graph_results":[{slug,via_concepts,seed_slugs,shared_concepts}],  ← 图谱发现（新增）
+#    "mode":"hybrid","degraded":[]}
+```
 
-# ② 图谱遍历：从概念出发拿"相关概念 + 引用它的文档"
-curl "$BASE/v1/kb/$KB/graph/traverse?slug=$KB/entities/brake&depth=2&direction=both" \
-  -H "X-API-Key: $KEY"
+| `graph` 字段 | 默认 | 说明 |
+|---|---|---|
+| `depth` | 2 | 展开跳数。**2 = 文档→概念→相邻文档**（拿到"同概念的另一批文档"） |
+| `seed_k` | 全部结果 | 用向量前 N 条做种子 |
+| `max_results` | 10 | 图谱发现上限 |
+
+**为何不合并成一个数组**：图谱命中是**推导出的关联**而非排序结果（无向量分）。混排会凭空造分数，因此独立数组 + 溯源（`via_concepts` 连接概念、`seed_slugs` 来自哪篇、`shared_concepts` 共现强度），由调用方按 token 预算自行取舍。
+
+**实测**（`top_k=1`，逼向量只给 1 篇）：
+```
+results:       a-seed       (0.946)
+graph_results: b-sibling    via_concepts=["brake"]  shared_concepts=1
+```
+`b-sibling` 讲的是"用哪种刹车"，与"异响"语义不同（向量不召），但同属 brake 概念（图能连上）。
+
+**也可分开调用**（需要更细控制时）：
+
+```bash
+# 图谱遍历：从概念或被发现的文档出发
+curl "$BASE/v1/kb/$KB/graph/traverse?slug=$KB/entities/brake&depth=2" -H "X-API-Key: $KEY"
 # → {"paths":[{"from_slug","to_slug","link_type","context","depth"}]}
-#   context = 该关系在原文中的出处片段
+#   context = 该关系在原文中的出处片段；direction 缺省为 both
 
-# ③ 用图谱发现的概念再检索（补向量漏掉的侧面）
-curl -X POST "$BASE/v1/kb/$KB/retrieval" -H "X-API-Key: $KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"brake fluid replacement bleeding","mode":"hybrid","top_k":3}'
-
-# ④ 取全文（graph/retrieval 返回的都是 slug，配此端点拿内容）
+# 取全文（graph/retrieval 返回的都是 slug，配此端点拿内容）
 curl "$BASE/v1/kb/$KB/page?slug=$KB/docs/<name>" -H "X-API-Key: $KEY"
 # → {"slug","content"}
 ```

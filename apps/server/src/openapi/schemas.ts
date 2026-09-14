@@ -87,10 +87,24 @@ export const UrlImportBody = z.object({ url: z.url(), title: z.string().optional
 
 // ---------- Retrieval ----------
 
+export const GraphExpansionBody = z.object({
+  /** 展开跳数（2 = 文档→概念→相邻文档；默认 2） */
+  depth: z.number().int().min(1).max(3).default(2),
+  /** 用向量前 N 条做种子（缺省 = 全部返回结果） */
+  seed_k: z.number().int().min(1).max(20).optional(),
+  /** 图谱发现结果上限 */
+  max_results: z.number().int().min(1).max(50).default(10),
+});
+
 export const RetrievalBody = z.object({
   query: z.string().min(1).max(2000),
   mode: z.enum(["hybrid", "keyword"]).default("hybrid"),
   top_k: z.number().int().positive().max(100).optional(),
+  /**
+   * 图谱增强检索（可选）。缺省 = 纯向量/关键词（行为与历史完全一致）；
+   * 给出则在同一次调用里追加"经概念关联到的相邻文档"。
+   */
+  graph: GraphExpansionBody.optional(),
 });
 
 export const RetrievalHit = z.object({
@@ -101,10 +115,19 @@ export const RetrievalHit = z.object({
   source_id: z.string().nullable(),
 });
 
+export const GraphHit = z.object({
+  slug: z.string(),
+  via_concepts: z.array(z.string()),
+  seed_slugs: z.array(z.string()),
+  shared_concepts: z.number().int(),
+});
+
 export const RetrievalResponse = z.object({
   results: z.array(RetrievalHit),
   mode: z.string(),
   degraded: z.array(z.string()),
+  /** 图谱增强检索发现的相关文档；未请求图谱时缺省 */
+  graph_results: z.array(GraphHit).optional(),
 });
 
 // ---------- System ----------

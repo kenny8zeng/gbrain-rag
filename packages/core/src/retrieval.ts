@@ -1,6 +1,7 @@
 import type { Config } from "./config";
 import { runGbrainJson } from "./gbrain-cli";
 import { DOC_TYPE, isDocSlug } from "./entity-graph";
+import type { GraphExpansionOptions, GraphHit } from "./retrieval-graph";
 
 export interface RetrievalHit {
   slug: string;
@@ -14,6 +15,8 @@ export interface RetrievalResponse {
   results: RetrievalHit[];
   mode: "hybrid" | "keyword";
   degraded: string[];
+  /** 图谱增强检索发现的相关文档（仅当请求带 `graph` 参数时出现） */
+  graph_results?: GraphHit[];
 }
 
 type RawHit = Record<string, unknown>;
@@ -55,6 +58,8 @@ export interface RetrievalInput {
   query: string;
   mode?: "hybrid" | "keyword";
   topK?: number;
+  /** 图谱增强检索参数；缺省 = 纯向量/关键词 */
+  graph?: GraphExpansionOptions;
 }
 
 /**

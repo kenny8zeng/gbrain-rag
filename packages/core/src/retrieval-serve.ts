@@ -3,6 +3,7 @@ import type { Upstream } from "./gbrain-upstream";
 import { runGbrain, runGbrainJson } from "./gbrain-cli";
 import { normalizeHits, filterDocumentHits, overFetchLimit, type RetrievalInput, type RetrievalResponse } from "./retrieval";
 import { DOC_TYPE } from "./entity-graph";
+import { collectGraphDocs, type GraphExpansionOptions, type GraphPath } from "./retrieval-graph";
 
 /**
  * T049：检索走常驻 gbrain serve --http 通道（消除逐请求 CLI 进程启动）。
@@ -103,6 +104,37 @@ export class InternalRetrieval {
     if (!creds) throw new Error("internal client not ready (no kb sources)");
     const text = await mcpToolsCall(this.cfg, this.upstream, creds, tool, args);
     return JSON.parse(text) as T;
+  }
+
+  /**
+   * 图谱增强检索：向量找入口 → 从种子文档展开相邻文档（一次调用给两条通道）。
+   *
+   * `input.graph` 缺省时**行为与 `retrieve` 完全一致**（纯向量/关键词）；
+   * 展开失败不失败整个请求，只追加 `degraded: graph:<reason>`。
+   */
+  async retrieveWithGraph(kbId: string, input: RetrievalInput): Promise<RetrievalResponse> {
+    const base = await this.retrieve(kbId, input);
+    const g = input.graph;
+    if (!g) return base;
+    const seeds = base.results.slice(0, Math.max(1, g.seedK ?? base.results.length)).map((h) => h.slug);
+    if (seeds.length === 0) return { ...base, graph_results: [] };
+    try {
+      const pathsBySeed = new Map<string, GraphPath[]>();
+      for (const seed of seeds) {
+        const paths = await this.callTool<GraphPath[]>("traverse_graph", {
+          slug: seed,
+          depth: g.depth,
+          direction: "both",
+        });
+        pathsBySeed.set(seed, Array.isArray(paths) ? paths : []);
+      }
+      const exclude = new Set(base.results.map((h) => h.slug));
+      const graphResults = collectGraphDocs(kbId, seeds, pathsBySeed, g, exclude);
+      return { ...base, graph_results: graphResults };
+    } catch (e) {
+      // 图通道不可用不应让检索整体失败——向量结果已拿到
+      return { ...base, graph_results: [], degraded: [...base.degraded, `graph:${(e as Error).message.slice(0, 120)}`] };
+    }
   }
 
   /** serve 通道检索；失败抛错由调用方降级 */

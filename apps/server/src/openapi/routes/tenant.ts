@@ -417,7 +417,10 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
     const allowed = new Set<string>([kbId, ...(key.writeKb ? [key.writeKb] : []), ...key.readKbs]);
     const args: Record<string, unknown> = { slug: q.slug };
     if (q.depth !== undefined) args.depth = Number(q.depth);
-    if (q.direction !== undefined) args.direction = q.direction;
+    // 引擎 traverse_graph 的**返回形状随 direction 变化**：不传 direction 返回
+    // 节点树（{slug, links[]}），传了才返回边列表（{from_slug,to_slug,...}）。
+    // 本端点契约是边列表 ⇒ 必须显式给默认值，否则省略参数会静默返回空数组。
+    args.direction = q.direction ?? "both";
     if (q.link_type !== undefined) args.link_type = q.link_type;
     const raw = await svc.graphQuery<Array<Record<string, unknown>>>("traverse_graph", args);
     const paths = (Array.isArray(raw) ? raw : []).filter((p) => {
@@ -493,8 +496,14 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
     }
     // 契约字段是 snake_case（top_k），内部 RetrievalInput 是驼峰（topK）——
     // 不映射则 topK 恒 undefined，过取与截断静默失效（P10 根因）
-    const { query, mode, top_k } = parsed.data;
-    const result = await svc.retrieve(kbId, { query, mode, topK: top_k });
+    const { query, mode, top_k, graph } = parsed.data;
+    const result = await svc.retrieve(kbId, {
+      query,
+      mode,
+      topK: top_k,
+      // 缺省时不传 graph ⇒ 纯向量/关键词，行为与历史一致
+      graph: graph ? { depth: graph.depth, seedK: graph.seed_k, maxResults: graph.max_results } : undefined,
+    });
     return c.json(result);
   }));
 }

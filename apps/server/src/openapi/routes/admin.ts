@@ -457,7 +457,10 @@ export function registerAdminRoutes(app: OpenAPIHono<Env>, svc: Services, admin:
     const q = c.req.query();
     const args: Record<string, unknown> = { slug: q.slug };
     if (q.depth !== undefined) args.depth = Number(q.depth);
-    if (q.direction !== undefined) args.direction = q.direction;
+    // 引擎 traverse_graph 的**返回形状随 direction 变化**：不传 direction 返回
+    // 节点树（{slug, links[]}），传了才返回边列表（{from_slug,to_slug,...}）。
+    // 本端点契约是边列表 ⇒ 必须显式给默认值，否则省略参数会静默返回空数组。
+    args.direction = q.direction ?? "both";
     if (q.link_type !== undefined) args.link_type = q.link_type;
     return c.json(await svc.graphQuery("traverse_graph", args));
   }));
