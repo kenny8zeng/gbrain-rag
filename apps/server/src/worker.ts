@@ -34,6 +34,8 @@ export interface WorkerOptions {
   tickDelayMs?: number;
   /** 并发循环数（测试可注入单循环） */
   concurrency?: number;
+  /** 僵尸任务周期回收间隔（测试可注入短间隔） */
+  recoverIntervalMs?: number;
 }
 
 export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Promise<IngestOutcome>, opts?: WorkerOptions): WorkerHandle {
@@ -94,9 +96,16 @@ export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Pr
         clearInterval(hb);
       }
     };
+    // 必须 await 到任务结束：否则 tick 认领后立即返回，循环每个 tickDelayMs 又认领一个，
+    // 在飞任务数 = concurrency × (单任务耗时 / tickDelayMs) → 无界（每个任务都去抢 CLI 闸门，
+    // 造成 CPU/内存饱和与读路径排队）。concurrency 即"同时在飞的任务数"上界。
     const p = run();
     current.add(p);
-    void p.finally(() => current.delete(p));
+    try {
+      await p;
+    } finally {
+      current.delete(p);
+    }
   }
 
   async function loop(): Promise<void> {
@@ -112,6 +121,14 @@ export function startWorker(cfg: Config, db: DB, handler: (job: IngestJob) => Pr
     void runRetention();
     const retentionTimer = setInterval(() => void runRetention(), 24 * 3600 * 1000);
     retentionTimer.unref?.();
+
+    // 周期回收僵尸任务：只在启动期扫描会让"启动后才陈旧"的任务永久停留在 running
+    // （表现：文档永不落库且无任何报错）。单条 UPDATE，代价可忽略。
+    const recoverTimer = setInterval(
+      () => void recoverStale().catch(() => undefined),
+      opts?.recoverIntervalMs ?? 60_000,
+    );
+    recoverTimer.unref?.();
 
     const loops = Array.from({ length: concurrency }, async () => {
       while (!stopped) {

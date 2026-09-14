@@ -88,6 +88,8 @@ us5/us6 顶部探测 `/health` 自适应跑对应分支——docling 全量回�
 | D27 | MCP 文档面泄漏实体页（`list_pages` 混入 93 实体页；`search` top-1 即实体页） | `mcp-gateway.ts` 改写 `tools/call` 体：`search`/`query` 注入 `types`、`list_pages` 注入 `type`；图工具不触碰；显式类型不覆盖 | `tests/unit/mcp-gateway.test.ts`（7 例）+ 生产实测修复前后对比 | ✓ |
 | D29 | 图谱端点省略 `direction` 静默返回空数组——引擎 `traverse_graph` 的返回形状随 `direction` 变化（不传=节点树 `{slug,links[]}`，传了=边列表），服务未补默认值，边列表契约落空 | 租户/管理两端显式 `direction ?? "both"` | `tests/integration/graph-endpoints.test.ts`（5 例：省略 direction 仍返边、能发现相邻文档、图谱补召回、未请求时响应不变） | ✓ |
 | D28 | 并发批量导入压垮引擎 CLI（`gbrain ... exited with 143` = 超时被 SIGTERM → `ensureKbActive` 未捕获 → 提交接口 unhandled 500） | 全局 CLI 并发闸门（`GBRAIN_CLI_CONCURRENCY` 默认 3 + 有界排队 `GBRAIN_CLI_QUEUE_WAIT_MS`，超时抛 `CliBusyError`，执行超时不含排队）；`snapshot()` fail-open 用陈旧缓存；建图收尾按 `GRAPH_SETTLE_MS` 去抖；`CliError`/`CliBusyError` → 503 `UPSTREAM_BUSY` | `tests/unit/gbrain-cli-gate.test.ts`（5 例，真进程 `/bin/sleep` 验证上限/排队/失败释放/超时语义）+ `entity-graph.test.ts` 去抖 4 例 + 生产 26 并发实测（零 143/零 500/26 done） | ✓ |
+| D30 | **worker 并发上界失效（无界并发）**——`1b422b2` 把 `current = run(); await current` 改成 `void p.finally(...)` 时丢掉 `await`，`tick()` 认领后立即返回，循环每 `tickDelayMs`（1.5s）再认领一个：在飞任务数 = concurrency ×（单任务耗时 / 1.5s）→ 无界。生产实测 192 篇导入：`running` 峰值 **107**（配置仅 2）、CPU load **4.5 / 4 核**、可用内存 **236MB**、`GET /v1/kb/{id}/documents` 持续 **502**、`zeabur exec` 504 | `tick()` 内 `await p`（`finally` 里从 `current` 移除），恢复"每个循环同时在飞 1 个"的上界 | `tests/unit/worker.test.ts` 在飞上界 2 例（concurrency=1 断言 max=1；concurrency=2 断言 max=2；回退即 2 项失败） | ✓ |
+| D31 | **僵尸任务永不回收**——`recoverStale()` 只在 worker 启动时扫描一次（`JOB_STALE_MS` 默认 30min），**启动之后**才进入心跳陈旧状态的 `running` 任务再无人回收（表现：文档永不落库、且无任何报错） | 新增周期回收定时器（默认 60s；`recoverIntervalMs` 供测试注入短间隔） | `tests/unit/worker.test.ts` 周期回收 1 例（回退即失败） | ✓ |
 
 ## 5. 首批补齐（P1 = 台账 ✗ 项）
 

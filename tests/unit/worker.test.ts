@@ -129,6 +129,49 @@ describe("worker: 认领与状态机", () => {
     expect(times["job-b"]!.start).toBeLessThan(times["job-a"]!.finish);
   });
 
+  test("在飞任务数受 concurrency 约束（无界并发回归）", async () => {
+    const { db, fake } = makeDb();
+    fake.claimRows = [
+      { ...JOB_A, attempts: 0 },
+      { ...JOB_B, attempts: 0 },
+      { ...JOB_A, id: "job-c", attempts: 0 },
+    ];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const w = startWorker(cfg, db, async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await delay(80);
+      inFlight -= 1;
+      return { status: "done" };
+    }, { tickDelayMs: 5, concurrency: 1 });
+    await delay(300);
+    await w.stop();
+    // 认领必须等任务结束：否则 3 个任务会在 15ms 内全部被认领（在飞=3）
+    expect(maxInFlight).toBe(1);
+  });
+
+  test("并发 2 时在飞上界为 2（并发能力保留）", async () => {
+    const { db, fake } = makeDb();
+    fake.claimRows = [
+      { ...JOB_A, attempts: 0 },
+      { ...JOB_B, attempts: 0 },
+      { ...JOB_A, id: "job-c", attempts: 0 },
+    ];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const w = startWorker(cfg, db, async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await delay(80);
+      inFlight -= 1;
+      return { status: "done" };
+    }, { tickDelayMs: 5, concurrency: 2 });
+    await delay(300);
+    await w.stop();
+    expect(maxInFlight).toBe(2);
+  });
+
   test("启动期回收扫描：过期 running 重置为 queued（make_interval + stale 秒数）", async () => {
     const { db, fake } = makeDb();
     const w = startWorker(cfg, db, async () => ({ status: "done" }), { tickDelayMs: 5, concurrency: 1 });
@@ -138,6 +181,20 @@ describe("worker: 认领与状态机", () => {
     expect(recover).toBeDefined();
     expect(recover!.text).toContain("heartbeat_at < now() - make_interval");
     expect(recover!.values).toContain(1800); // JOB_STALE_MS / 1000
+  });
+
+  test("回收扫描周期性执行（启动后才陈旧的任务不会被永久遗漏）", async () => {
+    const { db, fake } = makeDb();
+    const w = startWorker(cfg, db, async () => ({ status: "done" }), {
+      tickDelayMs: 5,
+      concurrency: 1,
+      recoverIntervalMs: 20,
+    });
+    await delay(120);
+    await w.stop();
+    const recovers = fake.calls.filter((c) => c.text.includes("heartbeat_at < now() - make_interval"));
+    // 仅启动期扫描 → 恰好 1 次（任务在启动后才陈旧则永不回收）
+    expect(recovers.length).toBeGreaterThan(1);
   });
 });
 

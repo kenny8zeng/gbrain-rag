@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- **worker 并发上界失效导致批量导入饱和（D30）**：`1b422b2` 把 `current = run(); await current` 改成 `void p.finally(...)` 时丢掉 `await`，`tick()` 认领后不等待任务结束就返回，循环每 1.5s 再认领一个 → 在飞任务数无界（生产实测 192 篇导入时 `running` 峰值 **107**，而配置仅 2）。后果：CPU load 4.5/4 核、可用内存 236MB、读接口 `GET /v1/kb/{id}/documents` 持续 **502**。修：`tick()` 内 `await p`，恢复 `WORKER_CONCURRENCY` 的真实语义
+- **僵尸任务永不回收（D31）**：`recoverStale()` 只在 worker 启动时扫描一次（`JOB_STALE_MS` 默认 30min），启动**之后**才心跳陈旧的任务永久停留在 `running`（文档永不落库且无报错）。修：新增 60s 周期回收定时器（`recoverIntervalMs` 可注入，供测试）
 - **并发批量导入压垮引擎 CLI（D28）**：`gbrain ... exited with 143`（超时被 SIGTERM）→ 提交接口未捕获抛 500。修：全局 CLI 并发闸门 + `snapshot()` fail-open 用陈旧缓存 + 建图收尾去抖 + CLI 错误映射 503
 - MCP 文档面泄漏实体页（D27）：实测 `list_pages` 混入 93 个实体页、`search` top-1 即实体页
 - 图谱端点省略 `direction` 静默返回空数组（D29）：引擎 `traverse_graph` 的返回形状随 `direction` 变化（不传=节点树），端点契约是边列表 → 补默认 `both`
