@@ -6,6 +6,7 @@ specs/
 .openteams/
 .omp/
 .specify/
+.codegraph/
 *.log
 .env*
 !.env.example

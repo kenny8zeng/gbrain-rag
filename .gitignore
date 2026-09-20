@@ -9,3 +9,6 @@ coverage/
 data/
 .DS_Store
 *.swp
+
+# CodeGraph 本地索引（daemon.pid/socket/日志/db 均为机器本地运行时产物）
+.codegraph/
