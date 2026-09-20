@@ -60,12 +60,32 @@ EOF
 
 ### 解析器（可选）
 
-| 变量 | 默认 | 说明 |
-|---|---|---|
-| `PARSER_MODE` | `auto` | `docling`/`anydoc` 强制单解析器（测试/排障，无回退） |
-| `PARSER_PREFERENCE` | `docling` | docling 配置时的首选；另一解析器为失败回退 |
-| `ANYDOC_OCR` | `off` | `on` 启用扫描 PDF 托管 OCR（数据出机器） |
-| `FIRECRAWL_API_KEY` | 空 | 托管 OCR 凭证（ANYDOC_OCR=on 时需要） |
+解析策略由 **`PARSER_MODE` × `DOCLING_URL` × `PARSER_PREFERENCE`** 三者共同决定（下表）。
+
+| 变量 | 取值 | 默认 | 说明 |
+|---|---|---|---|
+| `PARSER_MODE` | `auto` / `docling` / `anydoc` | `auto` | `docling`/`anydoc` = **强制单解析器**（用于测试/排障）：**无回退**、忽略 `PARSER_PREFERENCE`；`docling` 模式另要求 `DOCLING_URL` 非空（否则启动即报错） |
+| `DOCLING_URL` | URL / 空 | 空 | 外部解析服务地址。**空 = 内置 anydoc 唯一**（无回退；URL/图片类不可用） |
+| `PARSER_PREFERENCE` | `docling` / `anydoc` | `docling` | **仅在 `PARSER_MODE=auto` 且 `DOCLING_URL` 非空时生效**——决定双通道并存时的首选解析器；另一解析器作为**失败回退** |
+| `ANYDOC_OCR` | `off` / `on` | `off` | 启用扫描 PDF 托管 OCR（**数据出机器**） |
+| `FIRECRAWL_API_KEY` | 凭证串 / 空 | 空 | 托管 OCR 凭证（`ANYDOC_OCR=on` 时必需） |
+
+**生效矩阵**（`resolveParser` 的完整分支，无其它组合）：
+
+| `PARSER_MODE` | `DOCLING_URL` | `PARSER_PREFERENCE` | 首选 | 回退 | URL/图片 |
+|---|---|---|---|---|---|
+| `anydoc`（强制） | 任意 | 忽略 | anydoc | **无** | ❌ 不可用 |
+| `docling`（强制） | 必填非空 | 忽略 | docling | **无** | ✅ docling |
+| `auto` | 空 | 忽略 | anydoc | **无** | ❌ 不可用 |
+| `auto` | 非空 | `anydoc` | anydoc | docling | ✅ docling |
+| `auto` | 非空 | `docling` | docling | anydoc | ✅ docling |
+
+**要点**：
+- `PARSER_PREFERENCE` **只在最后两行生效**——单解析器形态（强制模式 / 未配外部服务）下它是死配置，改了不产生任何影响
+- **回退仅在 `auto` + `DOCLING_URL` 非空时存在**；强制模式与 anydoc 唯一形态都**不回退**（首选失败即失败）
+- **URL / 独立图片恒由外部解析服务处理**（docling 独有能力）：`DOCLING_URL` 为空时这两类输入返回 `PARSER_UNAVAILABLE`，与 `PARSER_PREFERENCE` 无关
+- **`PARSER_PREFERENCE` 按部署生效，调用方不可覆盖**：知识库导入与裸解析（`POST /v1/kb/parse`）**共用同一套解析链**（同一 `resolveParserFor`），故同一文件两条路径的 Markdown 与生效解析器一致
+- **首选失败才回退，回退只做一次**（链结构保证）；两通道皆失败时错误消息含各通道失败摘要
 
 ### 服务（可选）
 

@@ -29,6 +29,8 @@
 - 梦境周期环境变量以 `DREAM_CRON`（5 段表达式）取代早期 `DREAM_INTERVAL_HOURS`
 
 ### Fixed
+- **解析链缓存键漏 `PARSER_PREFERENCE`（D33）**：`resolveParserFor` 的单例缓存键只含 `PARSER_MODE|DOCLING_URL`，同一进程内变更解析偏好会复用旧链——首选与回退互换、能力自描述与实际行为不一致。缓存键补入 `PARSER_PREFERENCE`
+- **部署文档补全 `PARSER_PREFERENCE` 说明**：原文仅一句「docling 配置时的首选」，未说明它与 `PARSER_MODE`/`DOCLING_URL` 的联动、`auto` 的实际含义、以及单解析器形态下它是死配置。现补「生效矩阵」（5 个分支）与四要点（生效前提、回退存在条件、URL/图片恒归属、两条路径共用同一链）
 
 - **worker 并发上界失效导致批量导入饱和（D30）**：`1b422b2` 把 `current = run(); await current` 改成 `void p.finally(...)` 时丢掉 `await`，`tick()` 认领后不等待任务结束就返回，循环每 1.5s 再认领一个 → 在飞任务数无界（生产实测 192 篇导入时 `running` 峰值 **107**，而配置仅 2）。后果：CPU load 4.5/4 核、可用内存 236MB、读接口 `GET /v1/kb/{id}/documents` 持续 **502**。修：`tick()` 内 `await p`，恢复 `WORKER_CONCURRENCY` 的真实语义
 - **僵尸任务永不回收（D31）**：`recoverStale()` 只在 worker 启动时扫描一次（`JOB_STALE_MS` 默认 30min），启动**之后**才心跳陈旧的任务永久停留在 `running`（文档永不落库且无报错）。修：新增 60s 周期回收定时器（`recoverIntervalMs` 可注入，供测试）
