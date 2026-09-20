@@ -28,6 +28,12 @@ export const configSchema = z.object({
   JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
   JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000), // docling 调用另受 110s 下限约束
   /**
+   * 裸解析端点（009）的并发上限。**独立于引擎 CLI 闸门**：解析不经 runGbrain
+   * （内置解析器进程内调用、外部解析服务是 HTTP 出站），占用的是 CPU 与出站连接。
+   * 饱和时返回可重试的 PARSE_BUSY，且不影响知识库导入/检索。
+   */
+  PARSE_CONCURRENCY: z.coerce.number().int().positive().default(4),
+  /**
    * 全局 gbrain CLI 并发上限（唯一收敛点，见 gbrain-cli.ts 闸门）。
    * 每个调用是一个 ~1s 启动 CPU + 常驻内存的独立进程，put 期间还挂着外部 embed
    * 请求；无上限并发在受限节点上会互相拖垮（生产实测 143 超时）。

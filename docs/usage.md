@@ -148,6 +148,7 @@ Agent 侧经 MCP 可用 `traverse_graph` / `entity` / `get_links` / `get_backlin
 | `GET /v1/kb/:id/documents` | 页面列表 | 读授权 |
 | `GET /v1/kb/:id/page?slug=...` | **页面全文**（markdown，slug 须属本 kb） | 读授权 |
 | `DELETE /v1/kb/:id/documents/docs/:name` | 删除页面 | 写分区 |
+| `POST /v1/kb/parse` | **裸文档解析**（文件/URL/纯文本直通；不写入任何知识库） | 仅需凭证有效 |
 | `GET /v1/kb/:id/documents/jobs/:jobId` | 任务状态 | 读授权 |
 | `POST /v1/kb/:id/retrieval` | 检索（`mode: hybrid\|keyword`） | 读授权 |
 | `GET /v1/kb/:id/graph/traverse` | 图谱多跳遍历（`slug`/`depth`/`direction`/`link_type`） | 读授权 |

@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Added
+- **裸文档解析 API（009）**：`POST /v1/kb/parse`——把已有解析能力单独对外复用（抽字段/二次分块/送入自有 LLM 流程），**零写入**（不产生页面、图谱边或任务，不消耗嵌入配额）。三态输入：文件（multipart）/ 网页地址（JSON）/ 纯文本直通（`.md`/`.txt` 原样返回）。**解析优先级与知识库导入同一套部署级设定**（首选解析器 + 外部解析服务地址 + 回退），调用方不可覆盖；响应如实报告实际生效解析器与耗时。类型判定**内容优先**（与解析通道自身一致，扩展名仅作回退）。部署未配置外部解析服务时，能力范围外类型返回 `UNSUPPORTED_FILE_TYPE`、图片/URL 返回 `PARSER_UNAVAILABLE`（均不重试），容量饱和返回 `PARSE_BUSY`（503，可重试）。`GET /health` 新增 `parse` 能力自描述块（首选/可用通道/支持类型/并发上限）。新增 `PARSE_CONCURRENCY`（默认 4，**独立于引擎 CLI 闸门**——解析不经 gbrain 子进程）。凭证可**零知识库绑定**（`read_kbs: []` 即可用于解析）
 - **批量导入 API（009）**：`POST /v1/kb/{id}/documents/bulk`——tar 归档 md 一次导入（`tar -xf` 可探测格式，镜像新增 zstd/bzip2/xz）。服务端 slug 归位（与逐篇接口同规则）+ 双链目标实体页派生 + 单次 import + `extract links` 幂等建边；`dry_run=true` 返回 slug 映射自检；幂等可续传（staging 字节稳定触发 import checkpoint）；upsert 语义；`SLUG_COLLISION`/`NO_MARKDOWN`/`UNSAFE_ARCHIVE` 防御性拒绝。迁移 `0003`（job type `bulk` + `result_summary`）。实测 185 篇 15.5min → ~70s
 
 - **知识图谱（008）**：文档正文的 `[[概念]]` 在导入时自动建图——为缺失目标创建实体页（`<kb>/entities/<规范名>`，类型 `concept` + 来源标记），并由引擎写入关系边；删除文档后自动回收「不再被任何存活文档引用」的自动创建实体页（共享节点保留、用户自建页永不回收）

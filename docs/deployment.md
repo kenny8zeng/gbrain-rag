@@ -73,6 +73,7 @@ EOF
 | `CORS_ORIGINS` | 空 | 跨域来源列表（逗号分隔；空=关闭；`*`=全放行） |
 | `MAX_UPLOAD_BYTES` | 104857600 | 单文件上传上限 |
 | `WORKER_CONCURRENCY` | 2 | 摄取并发 |
+| `PARSE_CONCURRENCY` | 4 | 裸解析端点并发上限（**独立于引擎 CLI 闸门**：解析不经 `gbrain` 子进程） |
 | `DREAM_ENABLED` | `false` | 梦境周期定时开关（默认关 = 零行为变化；开启后按间隔自动触发，见 §梦境周期） |
 | `DREAM_CRON` | `0 4 * * *` | cron 5 段表达式（默认每日凌晨 4 点，服务器时区——可用 `TZ` 调整）；空 = 仅手工触发 |
 | `DREAM_TIER` | `light` | 成本档：`light`=仅关系/时间线提取（无 LLM 合成）；`full`=全部维护阶段（含 LLM 反思合成，复用主对话模型） |

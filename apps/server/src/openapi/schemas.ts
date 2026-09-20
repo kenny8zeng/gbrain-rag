@@ -148,6 +148,26 @@ export const RetrievalResponse = z.object({
   graph_results: z.array(GraphHit).optional(),
 });
 
+// ---------- 裸解析（009） ----------
+
+export const ParseResultView = z.object({
+  markdown: z.string(),
+  parser: z.enum(["docling", "anydoc", "passthrough"]),
+  fallback_from: z.string().nullable(),
+  duration_ms: z.number(),
+  chars: z.number(),
+  empty: z.boolean(),
+});
+
+export const ParseCapabilityView = z.object({
+  primary: z.enum(["docling", "anydoc"]),
+  available_channels: z.array(z.enum(["anydoc", "docling"])),
+  accepts_url: z.boolean(),
+  supported_file_types: z.array(z.string()),
+  passthrough_types: z.array(z.string()),
+  concurrency: z.number(),
+});
+
 // ---------- System ----------
 
 export const Health = z.object({
@@ -159,6 +179,8 @@ export const Health = z.object({
   parser_primary: z.enum(["docling", "anydoc"]),
   parser_preference: z.enum(["docling", "anydoc"]),
   models: z.object({ embedding: z.boolean(), rerank: z.boolean(), chat: z.boolean() }),
+  /** 009：解析能力自描述（FR-014）——调用方据此预先判断某类型是否可解析 */
+  parse: ParseCapabilityView,
 });
 
 /** 鉴权方案引用（docs 内的 security 字段形状） */

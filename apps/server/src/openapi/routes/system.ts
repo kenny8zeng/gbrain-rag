@@ -3,6 +3,7 @@ import type { Services } from "../../app";
 import type { Env } from "../../middleware/auth";
 import { Health } from "../schemas";
 import { resolveParserFor } from "@core/ingest/resolver";
+import { buildCapabilityProfile } from "@core/ingest/parse-api";
 
 /** 系统面：健康检查（公开，无 security） */
 export function registerSystemRoutes(app: OpenAPIHono<Env>, svc: Services): void {
@@ -37,6 +38,7 @@ export function registerSystemRoutes(app: OpenAPIHono<Env>, svc: Services): void
         parser_primary: resolveParserFor(svc.cfg).mode,
         parser_preference: svc.cfg.PARSER_PREFERENCE,
         models: { embedding: svc.modelState.embedding, rerank: svc.modelState.rerank, chat: svc.modelState.chat },
+        parse: buildCapabilityProfile(svc.cfg),
       },
       ok ? 200 : 503,
     );

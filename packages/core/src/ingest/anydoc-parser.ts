@@ -40,6 +40,19 @@ export function formatFromFilename(filename: string): string | null {
   return EXT_FALLBACK[ext] ?? null;
 }
 
+/**
+ * 内容嗅探（009）：与 convertFile 自身使用的判定链首段一致。
+ * 导出以便裸解析端点的受理判定与解析行为**同源**（FR-008 内容优先）。
+ */
+export function sniffFormatFromBytes(bytes: Uint8Array): string | null {
+  return formatFromBytes(bytes);
+}
+
+/** 扩展名白名单键（009）：能力自描述与扩展名轨判定的**单一事实来源**（避免第二份类型表漂移） */
+export function supportedExtensions(): string[] {
+  return Object.keys(EXT_FALLBACK);
+}
+
 type AnyDocConvert = (
   bytes: Uint8Array,
   format?: unknown,

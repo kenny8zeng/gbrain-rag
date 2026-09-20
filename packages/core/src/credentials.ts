@@ -111,17 +111,25 @@ export async function issueKey(
   if (input.writeKb) await ensureKbActive(cfg, input.writeKb);
 
   const readKbs = input.readKbs.length > 0 ? input.readKbs : input.writeKb ? [input.writeKb] : [];
-  const clientName = `rag-${randomHex(6)}`;
-  const output = await runGbrain(cfg, {
-    args: buildRegisterArgs({ clientName, writeKb: input.writeKb ?? null, readKbs }),
-    timeoutMs: 60_000,
-  }).then((r) => r.stdout);
+  // 零知识库绑定（009）：read_kbs 与 write_kb 皆空 ⇒ 不创建上游 client（上游 client 必须以
+  // source_id 指向某个库）。该凭证仅能访问不依赖知识库的端点（如裸解析），对知识库端点仍 403。
+  let clientId: string | null = null;
+  let clientSecret: string | null = null;
+  if (readKbs.length > 0) {
+    const clientName = `rag-${randomHex(6)}`;
+    const output = await runGbrain(cfg, {
+      args: buildRegisterArgs({ clientName, writeKb: input.writeKb ?? null, readKbs }),
+      timeoutMs: 60_000,
+    }).then((r) => r.stdout);
 
-  const { clientId, clientSecret } = parseRegistered(output);
+    const reg = parseRegistered(output);
+    clientId = reg.clientId;
+    clientSecret = reg.clientSecret;
 
-  // register-client 不支持 --surface 时经 rescope 钉定（rescope 支持 --surface）
-  if (input.surface && input.surface !== "starter") {
-    await runGbrain(cfg, { args: ["auth", "rescope-client", clientId, "--surface", input.surface], timeoutMs: 60_000 });
+    // register-client 不支持 --surface 时经 rescope 钉定（rescope 支持 --surface）
+    if (input.surface && input.surface !== "starter") {
+      await runGbrain(cfg, { args: ["auth", "rescope-client", clientId, "--surface", input.surface], timeoutMs: 60_000 });
+    }
   }
 
   const gen = generateKey();

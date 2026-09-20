@@ -10,6 +10,18 @@ import { DOC_TYPE, isDocSlug, EntityGraphService } from "@core/entity-graph";
 import { resolveParserFor } from "@core/ingest/resolver";
 import { ParserUnavailableError } from "@core/ingest/parser";
 import {
+  ParseBusyError,
+  UnsupportedFileTypeError,
+  describeParseFailure,
+  isImageInput,
+  isPassthroughInput,
+  parseFile,
+  parseImage,
+  parsePassthrough,
+  parseUrl,
+  withParseSlot,
+} from "@core/ingest/parse-api";
+import {
   applyStrip,
   buildBulkStage,
   listArchiveFiles,
@@ -26,6 +38,7 @@ import {
   BulkDryRunView,
   ErrorEnvelope,
   JobView,
+  ParseResultView,
   RetrievalBody,
   RetrievalResponse,
   SubmitAccepted,
@@ -77,14 +90,15 @@ function randomHex(n: number): string {
   return [...randomBytes(n)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "tif", "svg", "heic"]);
-
-function isImageExt(filename: string): boolean {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  return IMAGE_EXTS.has(ext);
-}
+// 图片判定复用 009 的单一来源（packages/core/src/ingest/parse-api.ts），避免第二份类型表
+const isImageExt = isImageInput;
 
 const KbIdParam = z.object({ id: z.string() });
+const err401 = () =>
+  ({
+    401: { description: "凭证缺失或无效", content: { "application/json": { schema: ErrorEnvelope } } },
+  } as const);
+
 const err403 = () =>
   ({
     403: { description: "越权", content: { "application/json": { schema: ErrorEnvelope } } },
@@ -575,6 +589,110 @@ export function registerTenantRoutes(app: OpenAPIHono<Env>, svc: Services, tenan
       rmSync(archivePath, { force: true });
       rmSync(rawDir, { recursive: true, force: true });
       if (!accepted && stageDir !== null) rmSync(stageDir, { recursive: true, force: true });
+    }
+  }));
+
+  // 裸文档解析（009）：对外复用解析能力，**零写入**（不产生页面/图谱/任务）。
+  // 仅要求凭证有效（不绑定知识库，FR-010）；解析策略完全由部署设定（FR-003 不可覆盖）。
+  const parse = createRoute({
+    method: "post",
+    path: "/v1/kb/parse",
+    tags: ["tenant"],
+    summary: "裸文档解析（文件 / 网页地址 / 纯文本直通；不写入任何知识库）",
+    middleware: [tenant],
+    security: [{ apiKey: [] }],
+    request: {
+      body: {
+        required: true,
+        content: {
+          // 三态输入不可由 OpenAPIHono 统一校验（它按首个 content-type 的 schema 校验，
+          // 故各 schema 均须宽松到不误伤其它形态）：必填/大小语义一律由 handler 强制执行
+          "multipart/form-data": {
+            schema: z.object({ file: z.unknown().openapi({ format: "binary" }).optional().describe("必填（服务端校验）") }),
+          },
+          "application/json": { schema: z.object({ url: z.string().optional().describe("必填（服务端校验）") }) },
+          "text/markdown": { schema: z.string() },
+          "text/plain": { schema: z.string() },
+        },
+      },
+    },
+    responses: {
+      200: { description: "解析结果", content: { "application/json": { schema: ParseResultView } } },
+      ...err401(),
+      413: { description: "超过大小上限", content: { "application/json": { schema: ErrorEnvelope } } },
+      422: { description: "不支持的输入 / 类型 / 解析失败", content: { "application/json": { schema: ErrorEnvelope } } },
+      503: { description: "解析容量饱和（可重试）", content: { "application/json": { schema: ErrorEnvelope } } },
+    },
+  });
+  app.openapi(parse, libHandler<typeof parse>(async (c: Context<Env>) => {
+    // FR-010：仅要求凭证有效——requireTenant 中间件已校验；此处不查任何知识库授权
+    // FR-003：请求中的任何解析器偏好一律不读、不转发（解析策略只由部署设定决定）
+    const startedAt = Date.now();
+    const contentType = c.req.header("content-type") ?? "";
+    const fail = (e: unknown) => {
+      if (e instanceof UnsupportedFileTypeError) {
+        return c.json({ error: { code: e.code, message: e.message } }, 422);
+      }
+      if (e instanceof ParserUnavailableError) {
+        return c.json({ error: { code: "PARSER_UNAVAILABLE", message: e.message } }, 422);
+      }
+      const { code, message } = describeParseFailure(e);
+      return c.json({ error: { code, message } }, code === "PARSE_BUSY" ? 503 : 422);
+    };
+
+    try {
+      if (contentType.includes("multipart/form-data")) {
+        const body = await c.req.parseBody();
+        const file = body["file"];
+        if (!(file instanceof File)) {
+          return c.json({ error: { code: "INVALID_PARAMS", message: 'multipart field "file" is required' } }, 422);
+        }
+        if (file.size > svc.cfg.MAX_UPLOAD_BYTES) {
+          return c.json(
+            { error: { code: "PAYLOAD_TOO_LARGE", message: `file exceeds ${svc.cfg.MAX_UPLOAD_BYTES} bytes` } },
+            413,
+          );
+        }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        // 纯文本直通（md/txt）：零解析、不占解析并发额度（FR-005 / Edge Case）
+        if (isPassthroughInput(file.name)) {
+          return c.json(parsePassthrough(new TextDecoder().decode(bytes), startedAt));
+        }
+        // 独立图片是外部解析服务独有能力（与导入端点一致）：未配置时归「通道不可用」
+        // 而非「文件类型不支持」——调用方能据此区分「该换输入」与「该开配置」
+        const isImage = file.type.startsWith("image/") || isImageExt(file.name);
+        return c.json(
+          await withParseSlot(svc.cfg, () =>
+            isImage
+              ? parseImage({ cfg: svc.cfg }, bytes, file.name, startedAt)
+              : parseFile({ cfg: svc.cfg }, bytes, file.name, startedAt),
+          ),
+        );
+      }
+
+      if (contentType.includes("application/json")) {
+        const body = await c.req.json().catch(() => null);
+        const url = (body as { url?: unknown } | null)?.url;
+        if (typeof url !== "string" || url === "") {
+          return c.json({ error: { code: "INVALID_PARAMS", message: "{url} is required" } }, 422);
+        }
+        return c.json(await withParseSlot(svc.cfg, () => parseUrl({ cfg: svc.cfg }, url, startedAt)));
+      }
+
+      if (contentType.includes("text/markdown") || contentType.includes("text/plain")) {
+        const text = await c.req.text();
+        if (text.trim() === "") {
+          return c.json({ error: { code: "INVALID_PARAMS", message: "text body is empty" } }, 422);
+        }
+        return c.json(parsePassthrough(text, startedAt));
+      }
+
+      return c.json(
+        { error: { code: "INVALID_PARAMS", message: "unsupported content-type; use multipart, application/json {url}, or text/markdown" } },
+        422,
+      );
+    } catch (e) {
+      return fail(e);
     }
   }));
 
